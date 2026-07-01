@@ -104,9 +104,9 @@ async function resetDatabase() {
     const email = process.env.SUPER_ADMIN_EMAIL;
     const password = process.env.SUPER_ADMIN_PASSWORD;
 
-    if (!email || !password || password.length < 12) {
+    if (!email || !password || password.length < 8) {
       throw new Error(
-        "SUPER_ADMIN_EMAIL and a SUPER_ADMIN_PASSWORD of at least 12 characters are required in the environment.",
+        "SUPER_ADMIN_EMAIL and a SUPER_ADMIN_PASSWORD of at least 8 characters are required in the environment.",
       );
     }
 

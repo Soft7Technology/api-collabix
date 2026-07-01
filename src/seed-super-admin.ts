@@ -5,9 +5,9 @@ async function seedSuperAdmin() {
   const email = process.env.SUPER_ADMIN_EMAIL;
   const password = process.env.SUPER_ADMIN_PASSWORD;
 
-  if (!email || !password || password.length < 12) {
+  if (!email || !password || password.length < 8) {
     throw new Error(
-      "SUPER_ADMIN_EMAIL and a SUPER_ADMIN_PASSWORD of at least 12 characters are required.",
+      "SUPER_ADMIN_EMAIL and a SUPER_ADMIN_PASSWORD of at least 8 characters are required.",
     );
   }
 
@@ -22,8 +22,14 @@ async function seedSuperAdmin() {
     );
     if (checkRes.rows.length > 0) {
       console.log(
-        `✅ Super Admin '${email}' already exists. Skipping seeding.`,
+        `👤 Super Admin '${email}' already exists. Updating password...`,
       );
+      const passwordHash = await hashPassword(password);
+      await client.query(
+        "UPDATE users SET password_hash = $1 WHERE email = $2;",
+        [passwordHash, email]
+      );
+      console.log("✅ Super Admin password updated successfully!");
       return;
     }
 
