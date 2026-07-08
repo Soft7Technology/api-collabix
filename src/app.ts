@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
+import path from "path";
 import { config } from "./config/index.js";
 import { router as apiRouter } from "./routes/index.js";
 import { router as authRouter } from "./routes/auth.js";
@@ -21,6 +22,9 @@ app.use(express.json());
 if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
 }
+
+// Serve uploaded screenshots statically
+app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 
 const allowedOrigins = config.FRONTEND_URLS
   ? config.FRONTEND_URLS.split(",").map((o) => o.trim())

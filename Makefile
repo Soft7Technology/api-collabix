@@ -1,10 +1,10 @@
 # ---------- CONFIG ----------
 
 # Main dependencies
-PACKAGES = bcryptjs cookie-parser cors dotenv express helmet jsonwebtoken morgan nodemailer pg zod
+PACKAGES = bcryptjs cookie-parser cors dotenv express helmet jsonwebtoken morgan multer nodemailer pg zod
 
 # Dev dependencies
-DEV_PACKAGES = @types/bcryptjs @types/cookie-parser @types/cors @types/express @types/jsonwebtoken @types/morgan @types/node @types/nodemailer @types/pg eslint globals rimraf tsx typescript typescript-eslint
+DEV_PACKAGES = @types/bcryptjs @types/cookie-parser @types/cors @types/express @types/jsonwebtoken @types/morgan @types/multer @types/node @types/nodemailer @types/pg eslint globals rimraf tsx typescript typescript-eslint
 
 .PHONY: install dev build start seed reset-db lint setup
 

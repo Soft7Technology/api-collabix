@@ -32,6 +32,7 @@ async function resetDatabase() {
     // Double check truncate for other tables just in case CASCADE didn't cover some standalone tables
     await client.query("TRUNCATE TABLE user_invitations CASCADE;");
     await client.query("TRUNCATE TABLE refresh_tokens CASCADE;");
+    await client.query("TRUNCATE TABLE screen_logs CASCADE;");
 
     // 2. Ensure system tables (roles, departments, permissions) have their default values
     console.log("📁 Ensuring system roles and departments exist...");
