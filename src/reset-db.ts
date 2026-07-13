@@ -32,6 +32,7 @@ async function resetDatabase() {
     // Double check truncate for other tables just in case CASCADE didn't cover some standalone tables
     await client.query("TRUNCATE TABLE user_invitations CASCADE;");
     await client.query("TRUNCATE TABLE refresh_tokens CASCADE;");
+    await client.query("TRUNCATE TABLE screen_logs CASCADE;");
 
     // 2. Ensure system tables (roles, departments, permissions) have their default values
     console.log("📁 Ensuring system roles and departments exist...");
@@ -104,9 +105,9 @@ async function resetDatabase() {
     const email = process.env.SUPER_ADMIN_EMAIL;
     const password = process.env.SUPER_ADMIN_PASSWORD;
 
-    if (!email || !password || password.length < 12) {
+    if (!email || !password || password.length < 8) {
       throw new Error(
-        "SUPER_ADMIN_EMAIL and a SUPER_ADMIN_PASSWORD of at least 12 characters are required in the environment.",
+        "SUPER_ADMIN_EMAIL and a SUPER_ADMIN_PASSWORD of at least 8 characters are required in the environment.",
       );
     }
 

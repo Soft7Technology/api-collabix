@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { ProjectController } from "../controllers/projectController.js";
+import { MonitoringController, upload } from "../controllers/monitoringController.js";
 import { TaskController } from "../controllers/taskController.js";
 import { MemberController } from "../controllers/memberController.js";
 import { DashboardController } from "../controllers/dashboardController.js";
@@ -122,6 +123,14 @@ router.post("/leaves", DashboardController.createLeave);
 router.delete("/leaves/:id", DashboardController.deleteLeave);
 
 router.get("/activity", DashboardController.getActivity);
+
+// Screen monitoring routes
+router.post(
+  "/monitoring/upload",
+  upload.single("screenshot"),
+  MonitoringController.uploadScreenshot,
+);
+router.get("/monitoring/screenshots", MonitoringController.getScreenshots);
 
 // Platform administration stays in this API and is guarded again inside each
 // controller action with an explicit is_super_admin check.

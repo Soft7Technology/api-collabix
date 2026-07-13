@@ -16,3 +16,6 @@ lerna-debug.log*
 # OS Files
 .DS_Store
 Thumbs.db
+
+# User Uploads
+uploads/
