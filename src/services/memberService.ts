@@ -42,7 +42,7 @@ export class MemberService {
     const params: any[] = [organizationId, interval, tickInterval];
 
     if (userCtx && userCtx.roleRank >= 3) {
-      queryStr += ` AND u.department_id = $4 AND (u.id = $5 OR u.id IN (
+      queryStr += ` AND (u.department_id = $4 OR u.id = $5 OR u.id IN (
         SELECT member_id FROM project_members WHERE project_id IN (
           SELECT project_id FROM project_members WHERE member_id = $5
         )
@@ -94,7 +94,7 @@ export class MemberService {
     const params: any[] = [id, organizationId, interval, tickInterval];
 
     if (userCtx && userCtx.roleRank >= 3) {
-      queryStr += ` AND u.department_id = $5 AND (u.id = $6 OR u.id IN (
+      queryStr += ` AND (u.department_id = $5 OR u.id = $6 OR u.id IN (
         SELECT member_id FROM project_members WHERE project_id IN (
           SELECT project_id FROM project_members WHERE member_id = $6
         )
