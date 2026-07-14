@@ -130,6 +130,7 @@ router.post(
   upload.single("screenshot"),
   MonitoringController.uploadScreenshot,
 );
+router.post("/monitoring/stop", MonitoringController.stopMonitoring);
 router.get("/monitoring/screenshots", MonitoringController.getScreenshots);
 
 // Platform administration stays in this API and is guarded again inside each

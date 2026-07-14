@@ -116,4 +116,25 @@ export class MonitoringController {
       next(error);
     }
   }
+
+  static async stopMonitoring(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "Unauthorized", status: 401 } });
+        return;
+      }
+
+      const userId = req.user.id;
+
+      // Instantly mark active screen logs as inactive for this user
+      await db.query(
+        `UPDATE screen_logs SET status = 'inactive' WHERE user_id = $1 AND status = 'active';`,
+        [userId]
+      );
+
+      res.status(200).json({ message: "Monitoring stopped successfully." });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
