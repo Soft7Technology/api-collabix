@@ -42,6 +42,5 @@ setup:
 	@echo "🔄 Running backend setup..."
 	make install
 	make build
-	make reset-db
 	@echo "🚀 Starting backend dev server..."
 	make dev
