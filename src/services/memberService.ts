@@ -27,18 +27,24 @@ export class MemberService {
     if (!organizationId) {
       return [];
     }
+    const isProd = config.NODE_ENV === "production";
+    const interval = isProd ? "10 minutes" : "30 seconds";
+    const tickInterval = isProd ? 300 : 10;
+
     let queryStr = `
-      SELECT u.*, d.name as department_name 
+      SELECT u.*, d.name as department_name,
+        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND sl.captured_at >= NOW() - CAST($2 AS INTERVAL)) as active_logs,
+        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.captured_at >= CURRENT_DATE) * $3 as today_seconds
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
       WHERE u.organization_id = $1
     `;
-    const params: any[] = [organizationId];
+    const params: any[] = [organizationId, interval, tickInterval];
 
     if (userCtx && userCtx.roleRank >= 3) {
-      queryStr += ` AND u.department_id = $2 AND (u.id = $3 OR u.id IN (
+      queryStr += ` AND (u.department_id = $4 OR u.id = $5 OR u.id IN (
         SELECT member_id FROM project_members WHERE project_id IN (
-          SELECT project_id FROM project_members WHERE member_id = $3
+          SELECT project_id FROM project_members WHERE member_id = $5
         )
       ))`;
       params.push(userCtx.departmentId || null, userCtx.id);
@@ -55,7 +61,8 @@ export class MemberService {
       roleId: r.role_id,
       departmentId: r.department_id,
       department: r.department_name,
-      status: r.status,
+      status: r.active_logs > 0 ? "Active" : "Offline",
+      todaySeconds: r.today_seconds || 0,
     }));
   }
 
@@ -72,18 +79,24 @@ export class MemberService {
     },
   ) {
     if (!organizationId) return null;
+    const isProd = config.NODE_ENV === "production";
+    const interval = isProd ? "10 minutes" : "30 seconds";
+    const tickInterval = isProd ? 300 : 10;
+
     let queryStr = `
-      SELECT u.*, d.name as department_name 
+      SELECT u.*, d.name as department_name,
+        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND sl.captured_at >= NOW() - CAST($3 AS INTERVAL)) as active_logs,
+        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.captured_at >= CURRENT_DATE) * $4 as today_seconds
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
       WHERE u.id = $1 AND u.organization_id = $2
     `;
-    const params: any[] = [id, organizationId];
+    const params: any[] = [id, organizationId, interval, tickInterval];
 
     if (userCtx && userCtx.roleRank >= 3) {
-      queryStr += ` AND u.department_id = $3 AND (u.id = $4 OR u.id IN (
+      queryStr += ` AND (u.department_id = $5 OR u.id = $6 OR u.id IN (
         SELECT member_id FROM project_members WHERE project_id IN (
-          SELECT project_id FROM project_members WHERE member_id = $4
+          SELECT project_id FROM project_members WHERE member_id = $6
         )
       ))`;
       params.push(userCtx.departmentId || null, userCtx.id);
@@ -102,7 +115,8 @@ export class MemberService {
       roleId: r.role_id,
       departmentId: r.department_id,
       department: r.department_name,
-      status: r.status,
+      status: r.active_logs > 0 ? "Active" : "Offline",
+      todaySeconds: r.today_seconds || 0,
     };
   }
 
@@ -154,6 +168,7 @@ export class MemberService {
       email: string;
       roleId: string;
       departmentId?: string;
+      projectId?: string;
     },
     organizationId?: string | null,
   ) {
@@ -243,6 +258,15 @@ export class MemberService {
          VALUES ($1, $2, $3);`,
         [userId, tokenHash, expiresAt],
       );
+
+      if (member.projectId) {
+        await client.query(
+          `INSERT INTO project_members (project_id, member_id)
+           VALUES ($1, $2)
+           ON CONFLICT DO NOTHING;`,
+          [member.projectId, userId],
+        );
+      }
 
       await client.query("COMMIT;");
 

@@ -51,19 +51,17 @@ export class TaskController {
 
   static async create(req: Request, res: Response, next: NextFunction) {
     try {
-      if (
-        req.user &&
-        req.user.role_rank !== undefined &&
-        req.user.role_rank > 3
-      ) {
-        res
-          .status(403)
-          .json({
-            error: {
-              message: "Forbidden: Teammates cannot create tasks.",
-              status: 403,
-            },
-          });
+      const allowedRoles = ["Admin", "Manager", "Team leader"];
+      const isSuperAdmin = req.user?.is_super_admin;
+      const userRole = req.user?.role_name;
+
+      if (!isSuperAdmin && (!userRole || !allowedRoles.includes(userRole))) {
+        res.status(403).json({
+          error: {
+            message: "Forbidden: Only Admin, Manager, and Team leader can create tasks.",
+            status: 403,
+          },
+        });
         return;
       }
       const task = await TaskService.create(
