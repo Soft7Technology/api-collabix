@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   assignee_id VARCHAR REFERENCES team_members(id) ON DELETE SET NULL,
   project_id VARCHAR REFERENCES projects(id) ON DELETE CASCADE,
   due_date VARCHAR NOT NULL,
-  created_at VARCHAR NOT NULL
+  created_at VARCHAR NOT NULL,
+  updated_at VARCHAR NOT NULL DEFAULT '',
+  sprint_id VARCHAR REFERENCES sprints(id) ON DELETE SET NULL
 );
 
 -- Activity Items
