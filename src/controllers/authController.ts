@@ -92,6 +92,7 @@ export class AuthController {
       if (origin) {
         const isFromAdminApp =
           origin.includes("localhost:8081") ||
+          origin.includes("localhost:8002") ||
           origin.includes("admin.") ||
           origin.includes("portal.");
 
