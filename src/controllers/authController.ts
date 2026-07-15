@@ -51,7 +51,7 @@ export class AuthController {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      domain: process.env.NODE_ENV === "production" ? (config.COOKIE_DOMAIN || undefined) : undefined,
+      domain: config.COOKIE_DOMAIN || undefined,
     });
   }
 
