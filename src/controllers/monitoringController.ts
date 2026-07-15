@@ -137,4 +137,49 @@ export class MonitoringController {
       next(error);
     }
   }
+
+  static async deleteScreenshot(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "Unauthorized", status: 401 } });
+        return;
+      }
+
+      const { id } = req.params;
+      const userId = req.user.id;
+      const roleRank = req.user.role_rank ?? 4;
+
+      // Find the log entry
+      const logResult = await db.query(
+        "SELECT user_id, screenshot_path FROM screen_logs WHERE id = $1;",
+        [id]
+      );
+
+      if (logResult.rows.length === 0) {
+        res.status(404).json({ error: { message: "Log not found", status: 404 } });
+        return;
+      }
+
+      const log = logResult.rows[0];
+
+      // Check permissions: users can delete their own logs, managers/admins can delete any
+      if (roleRank > 2 && log.user_id !== userId) {
+        res.status(403).json({ error: { message: "Forbidden", status: 403 } });
+        return;
+      }
+
+      // Delete from database
+      await db.query("DELETE FROM screen_logs WHERE id = $1;", [id]);
+
+      // Delete file from disk if it exists
+      const filePath = path.resolve(process.cwd(), log.screenshot_path.replace(/^\//, ""));
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+
+      res.status(200).json({ message: "Screenshot deleted successfully." });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

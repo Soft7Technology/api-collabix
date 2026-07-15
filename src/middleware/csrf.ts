@@ -17,7 +17,7 @@ export function validateCSRF(req: Request, res: Response, next: NextFunction) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      domain: config.COOKIE_DOMAIN || undefined,
+      domain: process.env.NODE_ENV === "production" ? (config.COOKIE_DOMAIN || undefined) : undefined,
     });
   }
 
