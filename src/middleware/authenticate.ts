@@ -12,7 +12,14 @@ export async function authenticateUser(
   next: NextFunction,
 ) {
   try {
-    const token = req.cookies?.access_token;
+    let token = req.cookies?.access_token;
+    
+    // Check Authorization header fallback
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.split(" ")[1];
+    }
+
     if (!token) {
       res.status(401).json({
         error: {
