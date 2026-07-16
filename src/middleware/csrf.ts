@@ -12,12 +12,13 @@ export function validateCSRF(req: Request, res: Response, next: NextFunction) {
   let csrfCookie = req.cookies?.csrf_token;
   if (!csrfCookie) {
     csrfCookie = crypto.randomBytes(32).toString("hex");
+    const isLocalhost = req.hostname === "localhost" || req.hostname === "127.0.0.1";
     res.cookie("csrf_token", csrfCookie, {
       httpOnly: false, // Must be readable by frontend axios interceptor
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      domain: config.COOKIE_DOMAIN || undefined,
+      domain: isLocalhost ? undefined : (config.COOKIE_DOMAIN || undefined),
     });
   }
 

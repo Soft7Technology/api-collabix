@@ -27,20 +27,26 @@ export class AuthController {
    * Helper to set access, refresh, and CSRF cookies in response.
    */
   private static setAuthCookies(
+    req: Request,
     res: Response,
     userId: string,
     rawRefreshToken: string,
   ) {
+    const isLocalhost = req.hostname === "localhost" || req.hostname === "127.0.0.1";
+    const domainValue = isLocalhost ? undefined : (config.COOKIE_DOMAIN || undefined);
+
     // 1. Access Token Cookie
     const accessToken = generateAccessToken({ userId });
     res.cookie("access_token", accessToken, {
       ...cookieOptions,
+      domain: domainValue,
       maxAge: ACCESS_COOKIE_MAX_AGE,
     });
 
     // 2. Refresh Token Cookie
     res.cookie("refresh_token", rawRefreshToken, {
       ...cookieOptions,
+      domain: domainValue,
       maxAge: REFRESH_COOKIE_MAX_AGE,
     });
 
@@ -51,7 +57,7 @@ export class AuthController {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      domain: config.COOKIE_DOMAIN || undefined,
+      domain: domainValue,
     });
   }
 
@@ -132,7 +138,7 @@ export class AuthController {
       );
 
       // Set cookies
-      AuthController.setAuthCookies(res, user.id, rawRefreshToken);
+      AuthController.setAuthCookies(req, res, user.id, rawRefreshToken);
 
       res.json({
         user: {
@@ -170,7 +176,7 @@ export class AuthController {
         await AuthService.refreshSession(refreshToken);
 
       // Set new rotated cookies
-      AuthController.setAuthCookies(res, user.id, newRawRefreshToken);
+      AuthController.setAuthCookies(req, res, user.id, newRawRefreshToken);
 
       res.json({
         user: {
@@ -212,7 +218,7 @@ export class AuthController {
       );
 
       // Set cookies
-      AuthController.setAuthCookies(res, user.id, rawRefreshToken);
+      AuthController.setAuthCookies(req, res, user.id, rawRefreshToken);
 
       res.json({
         user: {
