@@ -12,7 +12,14 @@ export async function authenticateUser(
   next: NextFunction,
 ) {
   try {
-    const token = req.cookies?.access_token;
+    const cookieToken = req.cookies?.access_token;
+
+    const bearerToken = req.headers.authorization?.startsWith("Bearer ")
+      ? req.headers.authorization.split(" ")[1]
+      : null;
+
+    const token = cookieToken || bearerToken;
+    console.log("Access Token from Cookie:", token); // Debugging line
     if (!token) {
       res.status(401).json({
         error: {

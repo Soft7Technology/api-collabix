@@ -1,43 +1,73 @@
-import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
+import { Request, Response, NextFunction } from "express";
 import { config } from "../config/index.js";
 
-/**
- * Double-submit cookie pattern CSRF protection middleware.
- * Skips validation for GET, HEAD, and OPTIONS.
- * Checks that the incoming X-CSRF-Token header matches the csrf_token cookie.
- */
-export function validateCSRF(req: Request, res: Response, next: NextFunction) {
-  // 1. Get or generate the CSRF token cookie
-  let csrfCookie = req.cookies?.csrf_token;
-  if (!csrfCookie) {
-    csrfCookie = crypto.randomBytes(32).toString("hex");
-    res.cookie("csrf_token", csrfCookie, {
-      httpOnly: false, // Must be readable by frontend axios interceptor
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      domain: config.COOKIE_DOMAIN || undefined,
-    });
-  }
+export function validateCSRF(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    // Skip CSRF validation for safe methods
+    const safeMethods = ["GET", "HEAD", "OPTIONS"];
+    if (safeMethods.includes(req.method)) {
+      return next();
+    }
 
-  // 2. Skip validation for read-only HTTP methods
-  const safeMethods = ["GET", "HEAD", "OPTIONS"];
-  if (safeMethods.includes(req.method)) {
-    return next();
-  }
+    // Skip CSRF validation for login/auth routes if desired
+    const excludedRoutes = [
+      "/auth/login",
+      "/auth/register",
+      "/auth/refresh-token",
+    ];
 
-  // 3. Validate header matches cookie for POST, PUT, PATCH, DELETE
-  const csrfHeader = req.headers["x-csrf-token"];
-  if (!csrfHeader || csrfHeader !== csrfCookie) {
-    res.status(403).json({
-      error: {
-        message: "CSRF token validation failed or missing.",
-        status: 403,
-      },
-    });
-    return;
-  }
+    if (excludedRoutes.includes(req.path)) {
+      return next();
+    }
 
-  next();
+    // Skip CSRF for Bearer token clients (Postman, mobile apps, APIs)
+    const authHeader = req.headers.authorization;
+
+    if (authHeader?.startsWith("Bearer ")) {
+      return next();
+    }
+
+    const csrfCookie = req.cookies?.csrf_token;
+    const csrfHeader = req.headers["x-csrf-token"] as string | undefined;
+
+    // First request: generate CSRF cookie
+    if (!csrfCookie) {
+      const newToken = crypto.randomBytes(32).toString("hex");
+
+      res.cookie("csrf_token", newToken, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        domain: config.COOKIE_DOMAIN || undefined,
+      });
+
+      return res.status(403).json({
+        error: {
+          message:
+            "CSRF token generated. Retry request with x-csrf-token header.",
+          status: 403,
+        },
+      });
+    }
+
+    // Validate header matches cookie
+    if (!csrfHeader || csrfHeader !== csrfCookie) {
+      return res.status(403).json({
+        error: {
+          message: "CSRF token validation failed.",
+          status: 403,
+        },
+      });
+    }
+
+    next();
+  } catch (error) {
+    next(error);
+  }
 }
