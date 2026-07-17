@@ -95,6 +95,7 @@ export const inviteMemberSchema = z.object({
     name: z.string().min(1, "Name is required"),
     email: z.string().email("Invalid email address"),
     roleId: z.string().uuid(),
+    role: z.string().optional(),
     departmentId: z.string().uuid().optional(),
     projectId: z.string().optional(),
   }),
