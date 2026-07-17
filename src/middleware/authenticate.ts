@@ -19,6 +19,7 @@ export async function authenticateUser(
       : null;
 
     const token = cookieToken || bearerToken;
+    
     console.log("Access Token from Cookie:", token); // Debugging line
     if (!token) {
       res.status(401).json({
