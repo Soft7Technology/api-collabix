@@ -132,6 +132,7 @@ router.post(
 );
 router.post("/monitoring/stop", MonitoringController.stopMonitoring);
 router.get("/monitoring/screenshots", MonitoringController.getScreenshots);
+router.delete("/monitoring/screenshots/:id", MonitoringController.deleteScreenshot);
 
 // Platform administration stays in this API and is guarded again inside each
 // controller action with an explicit is_super_admin check.
