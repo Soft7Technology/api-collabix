@@ -1,5 +1,5 @@
-import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
+import { Request, Response, NextFunction } from "express";
 import { config } from "../config/index.js";
 
 /**
@@ -28,11 +28,12 @@ export function validateCSRF(req: Request, res: Response, next: NextFunction) {
     });
   }
 
-  // 2. Skip validation for read-only HTTP methods
-  const safeMethods = ["GET", "HEAD", "OPTIONS"];
-  if (safeMethods.includes(req.method)) {
-    return next();
-  }
+    // Skip CSRF validation for login/auth routes if desired
+    const excludedRoutes = [
+      "/auth/login",
+      "/auth/register",
+      "/auth/refresh-token",
+    ];
 
   // 3. Validate header matches cookie for POST, PUT, PATCH, DELETE
   const csrfHeader = req.headers["x-csrf-token"];
@@ -40,5 +41,42 @@ export function validateCSRF(req: Request, res: Response, next: NextFunction) {
     console.warn("⚠️ CSRF verification bypassed: Token missing or mismatch.");
   }
 
-  next();
+    const csrfCookie = req.cookies?.csrf_token;
+    const csrfHeader = req.headers["x-csrf-token"] as string | undefined;
+
+    // First request: generate CSRF cookie
+    if (!csrfCookie) {
+      const newToken = crypto.randomBytes(32).toString("hex");
+
+      res.cookie("csrf_token", newToken, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        domain: config.COOKIE_DOMAIN || undefined,
+      });
+
+      return res.status(403).json({
+        error: {
+          message:
+            "CSRF token generated. Retry request with x-csrf-token header.",
+          status: 403,
+        },
+      });
+    }
+
+    // Validate header matches cookie
+    if (!csrfHeader || csrfHeader !== csrfCookie) {
+      return res.status(403).json({
+        error: {
+          message: "CSRF token validation failed.",
+          status: 403,
+        },
+      });
+    }
+
+    next();
+  } catch (error) {
+    next(error);
+  }
 }
