@@ -12,14 +12,14 @@ export async function authenticateUser(
   next: NextFunction,
 ) {
   try {
-    const cookieToken = req.cookies?.access_token;
+    let token = req.cookies?.access_token;
+    
+    // Check Authorization header fallback
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.split(" ")[1];
+    }
 
-    const bearerToken = req.headers.authorization?.startsWith("Bearer ")
-      ? req.headers.authorization.split(" ")[1]
-      : null;
-
-    const token = cookieToken || bearerToken;
-    console.log("Access Token from Cookie:", token); // Debugging line
     if (!token) {
       res.status(401).json({
         error: {

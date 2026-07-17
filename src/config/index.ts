@@ -28,10 +28,10 @@ const envSchema = z
     JWT_REFRESH_EXPIRES_IN: z.string().default("30d"),
     // Customer URL is used in invitation/reset links. FRONTEND_URLS is the
     // complete CORS allow-list for the customer and administration apps.
-    FRONTEND_URL: z.string().url().default("http://localhost:8080"),
+    FRONTEND_URL: z.string().url().default("http://localhost:8001"),
     FRONTEND_URLS: z
       .string()
-      .default("http://localhost:8080,http://localhost:8081"),
+      .default("http://localhost:8001,http://localhost:8002"),
     EMAIL_PROVIDER: z.enum(["console", "smtp"]).default("console"),
     SMTP_HOST: z.string().default("sandbox.smtp.mailtrap.io"),
     SMTP_PORT: z.coerce.number().default(2525),
