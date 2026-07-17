@@ -124,7 +124,7 @@ export class MemberService {
     const id = `u${Date.now()}`;
 
     // Resolve Member Role ID
-    const roleName = member.role.toLowerCase() === "admin" ? "Admin" : "Member";
+    const roleName = member.role.toLowerCase() === "admin" ? "Admin" : "Teammates";
     const roleRes = await db.query("SELECT id FROM roles WHERE name = $1;", [
       roleName,
     ]);
@@ -167,6 +167,7 @@ export class MemberService {
       name: string;
       email: string;
       roleId: string;
+      role?: string;
       departmentId?: string;
       projectId?: string;
     },
@@ -233,7 +234,7 @@ export class MemberService {
         [
           userId,
           member.name,
-          roleName,
+          member.role ?? roleName,
           emailLower,
           avatarColor,
           initials,
