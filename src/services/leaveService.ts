@@ -5,6 +5,7 @@ export interface LeaveInput {
   type: string;
   startDate: string;
   endDate: string;
+  reason?: string;
 }
 
 export class LeaveService {
@@ -22,14 +23,16 @@ export class LeaveService {
       type: r.type,
       startDate: r.start_date,
       endDate: r.end_date,
+      status: r.status,
+      reason: r.reason,
     };
   }
 
   static async create(leave: LeaveInput, organizationId?: string | null) {
     const id = `l${Date.now()}`;
     const { rows } = await db.query(
-      `INSERT INTO leaves (id, member_id, type, start_date, end_date, organization_id)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO leaves (id, member_id, type, start_date, end_date, status, reason, organization_id)
+       VALUES ($1, $2, $3, $4, $5, 'PENDING', $6, $7)
        RETURNING *;`,
       [
         id,
@@ -37,6 +40,7 @@ export class LeaveService {
         leave.type,
         leave.startDate,
         leave.endDate,
+        leave.reason || null,
         organizationId || null,
       ],
     );
@@ -48,6 +52,27 @@ export class LeaveService {
       type: created.type,
       startDate: created.start_date,
       endDate: created.end_date,
+      status: created.status,
+      reason: created.reason,
+    };
+  }
+
+  static async updateStatus(id: string, status: "APPROVED" | "REJECTED", organizationId?: string | null) {
+    if (!organizationId) return null;
+    const { rows } = await db.query(
+      `UPDATE leaves SET status = $1 WHERE id = $2 AND organization_id = $3 RETURNING *;`,
+      [status, id, organizationId],
+    );
+    const updated = rows[0];
+    if (!updated) return null;
+    return {
+      id: updated.id,
+      memberId: updated.member_id,
+      type: updated.type,
+      startDate: updated.start_date,
+      endDate: updated.end_date,
+      status: updated.status,
+      reason: updated.reason,
     };
   }
 
@@ -65,6 +90,8 @@ export class LeaveService {
       type: deleted.type,
       startDate: deleted.start_date,
       endDate: deleted.end_date,
+      status: deleted.status,
+      reason: deleted.reason,
     };
   }
 }

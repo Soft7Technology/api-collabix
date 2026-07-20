@@ -4,6 +4,7 @@ import nodemailer from "nodemailer";
 export interface EmailProvider {
   sendInvitationEmail(email: string, invitationUrl: string): Promise<void>;
   sendPasswordResetEmail(email: string, resetUrl: string): Promise<void>;
+  sendLeaveStatusEmail(email: string, leaveType: string, startDate: string, endDate: string, status: string): Promise<void>;
 }
 
 class ConsoleEmailProvider implements EmailProvider {
@@ -35,6 +36,24 @@ class ConsoleEmailProvider implements EmailProvider {
     );
     console.info(`✅ Password reset email logged for ${email}\n`);
   }
+
+  async sendLeaveStatusEmail(
+    email: string,
+    leaveType: string,
+    startDate: string,
+    endDate: string,
+    status: string,
+  ): Promise<void> {
+    console.info(`\n📧 Sending leave status email to ${email}`);
+    console.info(
+      `--------------------------------------------------------------------------------`,
+    );
+    console.info(`✉️  [Console Email] Leave Request for ${leaveType} (${startDate} to ${endDate}) is ${status}`);
+    console.info(
+      `--------------------------------------------------------------------------------`,
+    );
+    console.info(`✅ Leave status email logged for ${email}\n`);
+  }
 }
 
 class SmtpEmailProvider implements EmailProvider {
@@ -63,7 +82,7 @@ class SmtpEmailProvider implements EmailProvider {
         subject: "Join your team on Collabix",
         html: `
           <div style="font-family: sans-serif; padding: 20px; line-height: 1.6; color: #111;">
-            <h2>Welcome to Collabix</h2>
+            <h2>Collabix Soft7 Onboarding  to Collabix</h2>
             <p>You have been invited to join the studio workspace.</p>
             <p>Please click the link below to set up your password and activate your account:</p>
             <p><a href="${invitationUrl}" style="background: #111; color: #fff; padding: 10px 16px; text-decoration: none; border-radius: 6px; display: inline-block;">Set Up Password</a></p>
@@ -97,6 +116,50 @@ class SmtpEmailProvider implements EmailProvider {
       console.log(`✅  Password reset email sent via SMTP to ${email}`);
     } catch (error) {
       console.error("❌  Failed to send password reset email via SMTP:", error);
+      throw error;
+    }
+  }
+
+  async sendLeaveStatusEmail(
+    email: string,
+    leaveType: string,
+    startDate: string,
+    endDate: string,
+    status: string,
+  ): Promise<void> {
+    try {
+      const isApproved = status === "APPROVED";
+      const statusLabel = isApproved ? "Approved" : "Rejected";
+      await this.transporter.sendMail({
+        from: config.SMTP_FROM,
+        to: email,
+        subject: `Leave Application ${statusLabel} — SOFT7`,
+        html: `
+          <div style="font-family: sans-serif; padding: 20px; line-height: 1.6; color: #111;">
+            <h2 style="color: ${isApproved ? "#10b981" : "#ef4444"};">Leave Application Update</h2>
+            <p>Your request for <strong>${leaveType} leave</strong> has been reviewed.</p>
+            <table style="border-collapse: collapse; margin-top: 15px; margin-bottom: 15px; width: 100%; max-width: 400px;">
+              <tr>
+                <td style="padding: 8px 12px; font-weight: bold; border: 1px solid #ddd; background: #fafafa;">Start Date:</td>
+                <td style="padding: 8px 12px; border: 1px solid #ddd;">${startDate}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 12px; font-weight: bold; border: 1px solid #ddd; background: #fafafa;">End Date:</td>
+                <td style="padding: 8px 12px; border: 1px solid #ddd;">${endDate}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 12px; font-weight: bold; border: 1px solid #ddd; background: #fafafa;">Status:</td>
+                <td style="padding: 8px 12px; border: 1px solid #ddd; font-weight: bold; color: ${isApproved ? "#10b981" : "#ef4444"};">${statusLabel}</td>
+              </tr>
+            </table>
+            <p>Thank you,</p>
+            <p><strong>SOFT7 Team</strong></p>
+          </div>
+        `,
+      });
+      console.log(`✅  Leave status email sent via SMTP to ${email}`);
+    } catch (error) {
+      console.error("❌  Failed to send leave status email via SMTP:", error);
       throw error;
     }
   }
