@@ -28,6 +28,7 @@ declare global {
         permissions: string[];
         role_name?: string;
         role_rank?: number;
+        can_create_tasks?: boolean;
         department_id?: string | null;
         is_super_admin: boolean;
         organization_id?: string | null;

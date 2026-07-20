@@ -63,6 +63,7 @@ export class MemberService {
       department: r.department_name,
       status: r.active_logs > 0 ? "Active" : "Offline",
       todaySeconds: r.today_seconds || 0,
+      canCreateTasks: !!r.can_create_tasks,
     }));
   }
 
@@ -117,7 +118,28 @@ export class MemberService {
       department: r.department_name,
       status: r.active_logs > 0 ? "Active" : "Offline",
       todaySeconds: r.today_seconds || 0,
+      canCreateTasks: !!r.can_create_tasks,
     };
+  }
+
+  static async updateTaskRights(
+    id: string,
+    organizationId: string,
+    canCreateTasks: boolean
+  ) {
+    const { rows } = await db.query(
+      `UPDATE users
+       SET can_create_tasks = $1
+       WHERE id = $2 AND organization_id = $3
+       RETURNING id, name, can_create_tasks AS "canCreateTasks";`,
+      [canCreateTasks, id, organizationId]
+    );
+
+    if (!rows[0]) {
+      throw new Error(`Member with ID '${id}' not found in organization.`);
+    }
+
+    return rows[0];
   }
 
   static async create(member: TeamMemberInput, organizationId?: string | null) {

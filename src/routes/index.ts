@@ -66,6 +66,10 @@ router.patch(
   validate(updateMemberRoleSchema),
   MemberController.updateRole,
 );
+router.patch(
+  "/team/:id/task-rights",
+  MemberController.updateTaskRights,
+);
 router.delete(
   "/team/:id",
   requirePermission("admin:manage"),
@@ -120,6 +124,7 @@ router.delete("/meetings/:id", DashboardController.deleteMeeting);
 
 router.get("/leaves", DashboardController.getLeaves);
 router.post("/leaves", DashboardController.createLeave);
+router.patch("/leaves/:id/status", DashboardController.updateLeaveStatus);
 router.delete("/leaves/:id", DashboardController.deleteLeave);
 
 router.get("/activity", DashboardController.getActivity);

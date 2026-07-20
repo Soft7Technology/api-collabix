@@ -167,4 +167,38 @@ export class MemberController {
       next(error);
     }
   }
+
+  static async updateTaskRights(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userRank = req.user?.role_rank ?? 4;
+      const isSuperAdmin = req.user?.is_super_admin;
+      if (!isSuperAdmin && userRank > 3) {
+        res.status(403).json({
+          error: {
+            message: "Forbidden: Only Admin, Manager, and Team leader can modify task creation rights.",
+            status: 403,
+          },
+        });
+        return;
+      }
+
+      const { id } = req.params;
+      const { canCreateTasks } = req.body;
+      const member = await MemberService.updateTaskRights(
+        id,
+        req.user?.organization_id || "",
+        Boolean(canCreateTasks),
+      );
+      if (req.user) {
+        await DashboardService.logActivity(
+          req.user.id,
+          `${canCreateTasks ? "granted" : "revoked"} task creation rights for`,
+          member.name,
+        );
+      }
+      res.json(member);
+    } catch (error) {
+      next(error);
+    }
+  }
 }

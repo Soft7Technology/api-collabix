@@ -54,11 +54,12 @@ export class TaskController {
       const allowedRoles = ["Admin", "Manager", "Team leader"];
       const isSuperAdmin = req.user?.is_super_admin;
       const userRole = req.user?.role_name;
+      const canCreateTasks = req.user?.can_create_tasks;
 
-      if (!isSuperAdmin && (!userRole || !allowedRoles.includes(userRole))) {
+      if (!isSuperAdmin && (!userRole || !allowedRoles.includes(userRole)) && !canCreateTasks) {
         res.status(403).json({
           error: {
-            message: "Forbidden: Only Admin, Manager, and Team leader can create tasks.",
+            message: "Forbidden: You do not have permission to create tasks.",
             status: 403,
           },
         });
