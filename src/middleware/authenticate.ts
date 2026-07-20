@@ -43,7 +43,7 @@ export async function authenticateUser(
 
     // Query DB to ensure user exists and is active, joining with roles and organizations
     const { rows } = await db.query(
-      `SELECT u.id, u.email, u.role_id, u.status, u.department_id, u.is_super_admin, u.organization_id,
+      `SELECT u.id, u.email, u.role_id, u.status, u.department_id, u.is_super_admin, u.organization_id, u.can_create_tasks,
               r.name as role_name, r.rank as role_rank,
               o.name as org_name, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone
        FROM users u
@@ -88,6 +88,7 @@ export async function authenticateUser(
       permissions,
       role_name: user.role_name,
       role_rank: user.role_rank,
+      can_create_tasks: !!user.can_create_tasks,
       department_id: user.department_id,
       is_super_admin: user.is_super_admin,
       organization_id: user.organization_id,
