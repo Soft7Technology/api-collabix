@@ -178,6 +178,8 @@ export class DashboardService {
       type: r.type,
       startDate: r.start_date,
       endDate: r.end_date,
+      status: r.status,
+      reason: r.reason,
     }));
   }
 

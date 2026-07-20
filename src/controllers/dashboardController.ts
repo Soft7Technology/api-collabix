@@ -3,6 +3,8 @@ import { DashboardService } from "../services/dashboardService.js";
 import { LeaveService } from "../services/leaveService.js";
 import { MeetingService } from "../services/meetingService.js";
 import { SprintService } from "../services/sprintService.js";
+import { MemberService } from "../services/memberService.js";
+import { emailService } from "../services/emailService.js";
 
 export class DashboardController {
   static async getSprints(req: Request, res: Response, next: NextFunction) {
@@ -355,6 +357,71 @@ export class DashboardController {
         );
       }
       res.json(sprint);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async updateLeaveStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+      const userCtx = req.user;
+
+      if (!userCtx || userCtx.role_rank === undefined || userCtx.role_rank > 3) {
+        res.status(403).json({
+          error: {
+            message: "Only Managers, HR, or Team Leaders can review leave requests.",
+            status: 403,
+          },
+        });
+        return;
+      }
+
+      if (status !== "APPROVED" && status !== "REJECTED") {
+        res.status(400).json({
+          error: {
+            message: "Status must be APPROVED or REJECTED.",
+            status: 400,
+          },
+        });
+        return;
+      }
+
+      const existingLeave = await LeaveService.getById(id, userCtx.organization_id || null);
+      if (!existingLeave) {
+        res.status(404).json({
+          error: {
+            message: "Leave request not found.",
+            status: 404,
+          },
+        });
+        return;
+      }
+
+      const updated = await LeaveService.updateStatus(id, status, userCtx.organization_id || null);
+      if (updated) {
+        const member = await MemberService.getById(updated.memberId, userCtx.organization_id || null);
+        if (member && member.email) {
+          emailService.sendLeaveStatusEmail(
+            member.email,
+            updated.type,
+            updated.startDate,
+            updated.endDate,
+            status
+          ).catch((err) => {
+            console.error("Failed to send leave status update email:", err);
+          });
+        }
+
+        await DashboardService.logActivity(
+          userCtx.id,
+          `${status.toLowerCase()} leave request`,
+          `for ${member?.name || "Member"}`
+        );
+      }
+
+      res.json(updated);
     } catch (error) {
       next(error);
     }

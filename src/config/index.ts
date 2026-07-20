@@ -42,7 +42,7 @@ const envSchema = z
     SMTP_PASS: z.string().optional(),
     SMTP_FROM: z
       .string()
-      .default("Collabix Onboarding <no-reply@collabix.com>"),
+      .default("Collabix Soft7 Onboarding <no-reply@collabix.com>"),
     COOKIE_DOMAIN: z.string().optional(),
   })
   .superRefine((env, context) => {
