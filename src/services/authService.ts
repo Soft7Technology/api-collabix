@@ -26,7 +26,7 @@ export class AuthService {
     }
 
     const { rows } = await db.query(
-      `SELECT u.id, u.name, u.email, u.password_hash, u.role_id, u.status, u.is_super_admin, u.organization_id, u.department_id,
+      `SELECT u.id, u.name, u.email, u.password_hash, u.role_id, u.status, u.is_super_admin, u.organization_id, u.department_id, u.can_create_tasks,
               r.name as role_name, r.rank as role_rank,
               d.name as department_name,
               o.name as org_name, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone as org_timezone 
@@ -72,6 +72,7 @@ export class AuthService {
       roleId: user.role_id,
       roleName: user.role_name,
       roleRank: user.role_rank,
+      canCreateTasks: !!user.can_create_tasks,
       departmentId: user.department_id,
       departmentName: user.department_name,
       isSuperAdmin: user.is_super_admin,
