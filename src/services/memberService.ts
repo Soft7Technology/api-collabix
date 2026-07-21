@@ -27,9 +27,8 @@ export class MemberService {
     if (!organizationId) {
       return [];
     }
-    const isProd = config.NODE_ENV === "production";
-    const interval = isProd ? "10 minutes" : "30 seconds";
-    const tickInterval = isProd ? 300 : 10;
+    const interval = "15 minutes";
+    const tickInterval = 600; // 10 minutes per screenshot capture
 
     let queryStr = `
       SELECT u.*, d.name as department_name,
@@ -80,9 +79,8 @@ export class MemberService {
     },
   ) {
     if (!organizationId) return null;
-    const isProd = config.NODE_ENV === "production";
-    const interval = isProd ? "10 minutes" : "30 seconds";
-    const tickInterval = isProd ? 300 : 10;
+    const interval = "15 minutes";
+    const tickInterval = 600; // 10 minutes per screenshot capture
 
     let queryStr = `
       SELECT u.*, d.name as department_name,

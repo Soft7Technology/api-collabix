@@ -102,10 +102,11 @@ export class MonitoringController {
       } else {
         // Regular teammates can only retrieve their own logs
         result = await db.query(
-          `SELECT id, screenshot_path, captured_at, display_width, display_height, status
-           FROM screen_logs
-           WHERE user_id = $1
-           ORDER BY captured_at DESC
+          `SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, u.name as user_name, u.email as user_email
+           FROM screen_logs sl
+           JOIN users u ON sl.user_id = u.id
+           WHERE sl.user_id = $1
+           ORDER BY sl.captured_at DESC
            LIMIT 50;`,
           [userId]
         );
