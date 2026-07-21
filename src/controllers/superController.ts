@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { SuperService } from "../services/superService.js";
+import { AuthController } from "./authController.js";
 
 export class SuperController {
   /**
@@ -104,6 +105,41 @@ export class SuperController {
       res.json({
         message: "Organization successfully deleted.",
         id,
+      });
+    } catch (error: any) {
+      res.status(400).json({ error: { message: error.message, status: 400 } });
+    }
+  }
+
+  /**
+   * POST /api/super/organizations/:id/impersonate
+   */
+  static async impersonate(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user || !req.user.is_super_admin) {
+        res
+          .status(403)
+          .json({
+            error: {
+              message: "Forbidden: Super Admin access required.",
+              status: 403,
+            },
+          });
+        return;
+      }
+
+      const { id } = req.params;
+      const { user, organization, rawRefreshToken } = await SuperService.impersonateOrganization(id);
+
+      AuthController.setAuthCookies(req, res, user.id, rawRefreshToken);
+
+      const clientAppUrl = process.env.CLIENT_APP_URL || (process.env.NODE_ENV === "production" ? "https://collabix.soft7.in" : "http://localhost:8001");
+
+      res.json({
+        message: `Successfully impersonated organization '${organization.name}'.`,
+        user,
+        organization,
+        redirectUrl: clientAppUrl,
       });
     } catch (error: any) {
       res.status(400).json({ error: { message: error.message, status: 400 } });

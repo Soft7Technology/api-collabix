@@ -26,7 +26,7 @@ export class AuthController {
   /**
    * Helper to set access, refresh, and CSRF cookies in response.
    */
-  private static setAuthCookies(
+  public static setAuthCookies(
     req: Request,
     res: Response,
     userId: string,
