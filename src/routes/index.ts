@@ -4,6 +4,7 @@ import { MonitoringController, upload } from "../controllers/monitoringControlle
 import { TaskController } from "../controllers/taskController.js";
 import { MemberController } from "../controllers/memberController.js";
 import { DashboardController } from "../controllers/dashboardController.js";
+import { DiscussionController } from "../controllers/discussionController.js";
 import { router as superRouter } from "./super.js";
 import { validate } from "../middleware/validate.js";
 import { requirePermission } from "../middleware/requirePermission.js";
@@ -43,6 +44,11 @@ router.delete(
   requirePermission("admin:manage"),
   ProjectController.delete,
 );
+
+// Discussion routes
+router.get("/projects/:projectId/discussions", DiscussionController.getByProject);
+router.post("/projects/:projectId/discussions", DiscussionController.create);
+router.delete("/discussions/:id", DiscussionController.delete);
 
 // Tasks routes
 router.get("/tasks", TaskController.getAll);

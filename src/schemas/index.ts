@@ -52,6 +52,7 @@ export const createTaskSchema = z.object({
     assigneeId: z.string().min(1, "Assignee ID is required"),
     projectId: z.string().min(1, "Project ID is required"),
     dueDate: z.string().min(1, "Due date is required"),
+    attachments: z.array(z.any()).optional(),
   }),
 });
 
@@ -67,6 +68,7 @@ export const updateTaskSchema = z.object({
     assigneeId: z.string().optional(),
     projectId: z.string().optional(),
     dueDate: z.string().optional(),
+    attachments: z.array(z.any()).optional(),
   }),
 });
 

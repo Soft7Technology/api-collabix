@@ -9,7 +9,8 @@ export interface TaskInput {
   assigneeId: string;
   projectId: string;
   dueDate: string;
-  sprintId?: string; // 👈 Added optional sprintId
+  sprintId?: string;
+  attachments?: any[];
 }
 
 export class TaskService {
@@ -165,8 +166,8 @@ export class TaskService {
       await client.query("BEGIN");
 
       const { rows } = await client.query(
-        `INSERT INTO tasks (id, title, description, status, priority, assignee_id, project_id, due_date, created_at, updated_at, sprint_id, organization_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        `INSERT INTO tasks (id, title, description, status, priority, assignee_id, project_id, due_date, created_at, updated_at, sprint_id, organization_id, attachments)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
          RETURNING *;`,
         [
           id,
@@ -181,6 +182,7 @@ export class TaskService {
           createdAt,
           task.sprintId || null,
           organizationId || null,
+          JSON.stringify(task.attachments || []),
         ],
       );
 
@@ -300,6 +302,10 @@ export class TaskService {
       if (patch.sprintId !== undefined) {
         fieldsToUpdate.push(`sprint_id = $${index++}`);
         values.push(patch.sprintId);
+      }
+      if (patch.attachments !== undefined) {
+        fieldsToUpdate.push(`attachments = $${index++}::jsonb`);
+        values.push(JSON.stringify(patch.attachments || []));
       }
 
       if (fieldsToUpdate.length === 0) {
