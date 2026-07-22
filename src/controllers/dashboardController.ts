@@ -367,11 +367,17 @@ export class DashboardController {
       const { id } = req.params;
       const { status } = req.body;
       const userCtx = req.user;
+      const isAuthorized =
+        userCtx &&
+        (userCtx.is_super_admin ||
+          (userCtx.role_rank !== undefined && userCtx.role_rank <= 3) ||
+          (userCtx.role_name &&
+            ["Admin", "Manager", "Team leader", "Super Admin"].includes(userCtx.role_name)));
 
-      if (!userCtx || userCtx.role_rank === undefined || userCtx.role_rank > 3) {
+      if (!isAuthorized) {
         res.status(403).json({
           error: {
-            message: "Only Managers, HR, or Team Leaders can review leave requests.",
+            message: "Only Managers, HR, Admins, or Super Admins can review leave requests.",
             status: 403,
           },
         });
