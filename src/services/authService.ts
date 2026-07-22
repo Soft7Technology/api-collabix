@@ -3,8 +3,8 @@ import { pool, db } from "../db/index.js";
 import {
   comparePassword,
   hashPassword,
-  generateAccessToken,
-  generateRefreshToken,
+  // generateAccessToken,
+  // generateRefreshToken,
 } from "../utils/auth.js";
 import { config } from "../config/index.js";
 import { emailService } from "./emailService.js";
