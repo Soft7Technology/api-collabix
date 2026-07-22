@@ -141,21 +141,21 @@ export class DashboardService {
     organizationId?: string | null,
     userCtx?: any,
   ) {
-    if (!organizationId) {
-      return [];
-    }
     let queryStr = "SELECT l.* FROM leaves l";
     const params = [];
     const conditions = [];
     if (organizationId) {
       conditions.push(`l.organization_id = $${conditions.length + 1}`);
       params.push(organizationId);
+    } else if (userCtx && !userCtx.isSuperAdmin) {
+      return [];
     }
+
     if (memberId) {
       conditions.push(`l.member_id = $${conditions.length + 1}`);
       params.push(memberId);
     }
-    if (userCtx && userCtx.roleRank >= 3) {
+    if (userCtx && userCtx.roleRank >= 3 && !userCtx.isSuperAdmin) {
       conditions.push(`EXISTS (
         SELECT 1 FROM users u
         WHERE l.member_id = u.id
@@ -171,6 +171,7 @@ export class DashboardService {
     if (conditions.length > 0) {
       queryStr += " WHERE " + conditions.join(" AND ");
     }
+    queryStr += " ORDER BY l.id DESC;";
     const { rows } = await db.query(queryStr, params);
     return rows.map((r) => ({
       id: r.id,

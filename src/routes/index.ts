@@ -48,6 +48,9 @@ router.delete(
 // Discussion routes
 router.get("/projects/:projectId/discussions", DiscussionController.getByProject);
 router.post("/projects/:projectId/discussions", DiscussionController.create);
+router.get("/discussions/:discussionId/replies", DiscussionController.getReplies);
+router.post("/discussions/:discussionId/replies", DiscussionController.addReply);
+router.patch("/discussions/:id/resolve", DiscussionController.toggleResolve);
 router.delete("/discussions/:id", DiscussionController.delete);
 
 // Tasks routes

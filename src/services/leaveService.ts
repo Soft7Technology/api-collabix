@@ -30,6 +30,12 @@ export class LeaveService {
 
   static async create(leave: LeaveInput, organizationId?: string | null) {
     const id = `l${Date.now()}`;
+    let resolvedOrgId = organizationId;
+    if (!resolvedOrgId && leave.memberId) {
+      const uRes = await db.query("SELECT organization_id FROM users WHERE id = $1;", [leave.memberId]);
+      resolvedOrgId = uRes.rows[0]?.organization_id || null;
+    }
+
     const { rows } = await db.query(
       `INSERT INTO leaves (id, member_id, type, start_date, end_date, status, reason, organization_id)
        VALUES ($1, $2, $3, $4, $5, 'PENDING', $6, $7)
@@ -41,7 +47,7 @@ export class LeaveService {
         leave.startDate,
         leave.endDate,
         leave.reason || null,
-        organizationId || null,
+        resolvedOrgId || null,
       ],
     );
     const created = rows[0];
