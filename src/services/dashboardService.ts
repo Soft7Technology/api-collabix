@@ -156,17 +156,15 @@ export class DashboardService {
       params.push(memberId);
     }
     if (userCtx && userCtx.roleRank >= 3 && !userCtx.isSuperAdmin) {
-      conditions.push(`EXISTS (
-        SELECT 1 FROM users u
-        WHERE l.member_id = u.id
-          AND u.department_id = $${conditions.length + 1}
-          AND (u.id = $${conditions.length + 2} OR u.id IN (
-            SELECT member_id FROM project_members WHERE project_id IN (
-              SELECT project_id FROM project_members WHERE member_id = $${conditions.length + 2}
-            )
-          ))
+      conditions.push(`(
+        l.member_id = $${conditions.length + 1}
+        OR EXISTS (
+          SELECT 1 FROM users u
+          WHERE l.member_id = u.id
+            AND (u.department_id = $${conditions.length + 2} OR $${conditions.length + 2} IS NULL OR u.id = $${conditions.length + 1})
+        )
       )`);
-      params.push(userCtx.departmentId || null, userCtx.id);
+      params.push(userCtx.id, userCtx.departmentId || null);
     }
     if (conditions.length > 0) {
       queryStr += " WHERE " + conditions.join(" AND ");
