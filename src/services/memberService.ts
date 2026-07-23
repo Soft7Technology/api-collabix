@@ -33,7 +33,7 @@ export class MemberService {
     let queryStr = `
       SELECT u.*, d.name as department_name,
         (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND sl.captured_at >= NOW() - CAST($2 AS INTERVAL)) as active_logs,
-        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.captured_at >= CURRENT_DATE) * $3 as today_seconds
+        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) * $3 as today_seconds
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
       WHERE u.organization_id = $1
@@ -85,7 +85,7 @@ export class MemberService {
     let queryStr = `
       SELECT u.*, d.name as department_name,
         (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND sl.captured_at >= NOW() - CAST($3 AS INTERVAL)) as active_logs,
-        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.captured_at >= CURRENT_DATE) * $4 as today_seconds
+        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) * $4 as today_seconds
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
       WHERE u.id = $1 AND u.organization_id = $2
