@@ -58,6 +58,7 @@ export class AuthController {
       sameSite: "lax",
       path: "/",
       domain: domainValue,
+      maxAge: REFRESH_COOKIE_MAX_AGE,
     });
   }
 
