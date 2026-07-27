@@ -62,14 +62,17 @@ export class TaskService {
         conditions.push(`project_id = ANY($${index})`);
         params.push(visibleProjectIds);
       } else if (userCtx.roleRank === 4) {
-        // Teammate: projects they are member of (same as rank 3)
+        // Teammate: only tasks in visible projects AND assigned to them
         const visibleProjects = await ProjectService.getAll(userCtx);
         const visibleProjectIds = visibleProjects.map((p) => p.id);
         if (visibleProjectIds.length === 0) {
           return []; // No visible projects -> no tasks
         }
-        conditions.push(`project_id = ANY($${index})`);
+        conditions.push(`project_id = ANY($${index++})`);
         params.push(visibleProjectIds);
+
+        conditions.push(`assignee_id LIKE $${index++}`);
+        params.push(`%${userCtx.id}%`);
       }
     }
 
@@ -79,7 +82,16 @@ export class TaskService {
     queryStr += " ORDER BY created_at DESC;";
 
     const { rows } = await db.query(queryStr, params);
-    return rows.map((r) => {
+
+    let filteredRows = rows;
+    if (userCtx && userCtx.roleRank === 4) {
+      filteredRows = rows.filter((r) => {
+        const assignees = (r.assignee_id || "").split(",").map((s: string) => s.trim());
+        return assignees.includes(userCtx.id);
+      });
+    }
+
+    return filteredRows.map((r) => {
       const {
         assignee_id,
         project_id,

@@ -58,6 +58,7 @@ export class AuthController {
       sameSite: "lax",
       path: "/",
       domain: domainValue,
+      maxAge: REFRESH_COOKIE_MAX_AGE,
     });
   }
 
@@ -566,6 +567,48 @@ export class AuthController {
       }
       await AuthService.resetPassword(email, token, password);
       res.json({ message: "Password updated successfully." });
+    } catch (error: any) {
+      res.status(400).json({ error: { message: error.message, status: 400 } });
+    }
+  }
+
+  /**
+   * POST /auth/subscription
+   */
+  static async updateSubscription(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = (req as any).user;
+      if (!user || !user.organizationId) {
+        res.status(400).json({ error: { message: "Organization ID is missing.", status: 400 } });
+        return;
+      }
+
+      // Strict Admin permission check: Only Admins can manage billing / upgrade plan
+      const isAdmin =
+        user.isSuperAdmin ||
+        user.roleName === "Admin" ||
+        user.roleRank === 1 ||
+        (user.permissions && user.permissions.includes("admin:manage"));
+
+      if (!isAdmin) {
+        res.status(403).json({
+          error: {
+            message: "Only organization Admins are authorized to manage billing and upgrade subscription plans.",
+            status: 403,
+          },
+        });
+        return;
+      }
+
+      const { planId, billingCycle } = req.body;
+      const result = await AuthService.updateSubscription({
+        userId: user.id,
+        organizationId: user.organizationId,
+        planId,
+        billingCycle,
+      });
+
+      res.json(result);
     } catch (error: any) {
       res.status(400).json({ error: { message: error.message, status: 400 } });
     }

@@ -69,18 +69,19 @@ function checkSubscription(
     return next();
   }
 
-  if (!user.organization) {
+  // Allow read-only GET access to view existing projects, tasks, and reports
+  if (req.method === "GET") {
     return next();
   }
 
-  const { subscription_status, trial_ends_at, is_approved } = user.organization;
+  const { subscription_status, trial_ends_at, is_approved } = user.organization || {};
+  const status = (subscription_status || "").toLowerCase();
 
   // Block immediately if expired or revoked
-  if (subscription_status === "expired" || subscription_status === "revoked") {
+  if (status === "expired" || status === "revoked") {
     res.status(402).json({
       error: {
-        message:
-          "Your subscription has expired or was revoked. Please contact support or billing.",
+        message: "Your subscription has expired or was revoked. Subscription required to restore access.",
         code: "SUBSCRIPTION_EXPIRED",
         status: 402,
       },
@@ -88,24 +89,23 @@ function checkSubscription(
     return;
   }
 
-  // Active or approved subscription
-  if (is_approved && subscription_status === "active") {
+  // Active subscription check
+  if (status === "active" || status === "approved") {
     return next();
   }
 
   // Active trial check
-  if (subscription_status === "trial") {
+  if (!subscription_status || status === "trial" || status === "trialing" || is_approved) {
     const now = new Date();
-    const trialEnd = new Date(trial_ends_at);
-    if (now < trialEnd) {
+    const trialEnd = trial_ends_at ? new Date(trial_ends_at) : null;
+    if (!trialEnd || isNaN(trialEnd.getTime()) || now < trialEnd) {
       return next();
     }
   }
 
   res.status(402).json({
     error: {
-      message:
-        "Subscription trial expired. Payment required to restore access.",
+      message: "Subscription Required: Free trial has ended. Please subscribe to restore access.",
       code: "SUBSCRIPTION_EXPIRED",
       status: 402,
     },

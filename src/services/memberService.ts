@@ -31,11 +31,12 @@ export class MemberService {
     const tickInterval = 600; // 10 minutes per screenshot capture
 
     let queryStr = `
-      SELECT u.*, d.name as department_name,
+      SELECT u.*, d.name as department_name, sys_role.name as system_role_name, sys_role.rank as system_role_rank,
         (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND sl.captured_at >= NOW() - CAST($2 AS INTERVAL)) as active_logs,
         (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) * $3 as today_seconds
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
+      LEFT JOIN roles sys_role ON u.role_id = sys_role.id
       WHERE u.organization_id = $1
     `;
     const params: any[] = [organizationId, interval, tickInterval];
@@ -53,7 +54,8 @@ export class MemberService {
     return rows.map((r) => ({
       id: r.id,
       name: r.name,
-      role: r.role,
+      role: r.system_role_name || r.role || "Teammates",
+      designation: r.role,
       email: r.email,
       avatarColor: r.avatar_color,
       initials: r.initials,
@@ -83,11 +85,12 @@ export class MemberService {
     const tickInterval = 600; // 10 minutes per screenshot capture
 
     let queryStr = `
-      SELECT u.*, d.name as department_name,
+      SELECT u.*, d.name as department_name, sys_role.name as system_role_name, sys_role.rank as system_role_rank,
         (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND sl.captured_at >= NOW() - CAST($3 AS INTERVAL)) as active_logs,
         (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) * $4 as today_seconds
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
+      LEFT JOIN roles sys_role ON u.role_id = sys_role.id
       WHERE u.id = $1 AND u.organization_id = $2
     `;
     const params: any[] = [id, organizationId, interval, tickInterval];
@@ -107,7 +110,8 @@ export class MemberService {
     return {
       id: r.id,
       name: r.name,
-      role: r.role,
+      role: r.system_role_name || r.role || "Teammates",
+      designation: r.role,
       email: r.email,
       avatarColor: r.avatar_color,
       initials: r.initials,

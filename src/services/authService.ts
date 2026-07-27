@@ -433,10 +433,10 @@ export class AuthService {
     try {
       await client.query("BEGIN;");
 
-      // 1. Create Organization (expires in 3 days, pending approval)
+      // 1. Create Organization (5-day free trial, full feature access)
       const orgResult = await client.query(
         `INSERT INTO organizations (name, phone, subscription_status, trial_ends_at, is_approved)
-         VALUES ($1, $2, 'trial', NOW() + INTERVAL '3 days', FALSE)
+         VALUES ($1, $2, 'TRIALING', NOW() + INTERVAL '5 days', TRUE)
          RETURNING id, name, subscription_status, trial_ends_at, is_approved;`,
         [companyTrimmed, phone.trim()],
       );
@@ -617,5 +617,48 @@ export class AuthService {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * Update organization subscription status and plan.
+   */
+  static async updateSubscription(params: {
+    userId: string;
+    organizationId: string;
+    planId: string;
+    billingCycle?: string;
+  }) {
+    const { userId, organizationId, planId, billingCycle = "monthly" } = params;
+
+    if (!organizationId) {
+      throw new Error("User organization not found.");
+    }
+
+    const orgRes = await pool.query(
+      `UPDATE organizations
+       SET subscription_status = 'ACTIVE',
+           trial_ends_at = NULL,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, name, subscription_status, trial_ends_at, is_approved, timezone;`,
+      [organizationId],
+    );
+
+    const updatedOrg = orgRes.rows[0];
+    if (!updatedOrg) {
+      throw new Error("Organization not found.");
+    }
+
+    return {
+      message: `Successfully upgraded to ${planId.toUpperCase()} Plan (${billingCycle})!`,
+      organization: {
+        id: updatedOrg.id,
+        name: updatedOrg.name,
+        timezone: updatedOrg.timezone,
+        subscriptionStatus: updatedOrg.subscription_status,
+        trialEndsAt: updatedOrg.trial_ends_at,
+        isApproved: updatedOrg.is_approved,
+      },
+    };
   }
 }

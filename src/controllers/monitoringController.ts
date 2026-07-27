@@ -38,6 +38,8 @@ export const upload = multer({
   }
 });
 
+import { uploadToR2 } from "../services/storageService.js";
+
 export class MonitoringController {
   static async uploadScreenshot(req: Request, res: Response, next: NextFunction) {
     try {
@@ -53,7 +55,24 @@ export class MonitoringController {
 
       const userId = req.user.id;
       const filename = req.file.filename;
-      const screenshotPath = `/uploads/screenshots/${filename}`;
+      let screenshotPath = `/uploads/screenshots/${filename}`;
+
+      // Upload to Cloudflare R2 if configured
+      if (process.env.CLOUDFLARE_R2_ACCESS_KEY_ID && process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY) {
+        try {
+          const fileBuffer = req.file.buffer || (req.file.path ? fs.readFileSync(req.file.path) : null);
+          if (fileBuffer) {
+            screenshotPath = await uploadToR2(
+              "screenshots",
+              fileBuffer,
+              filename,
+              req.file.mimetype || "image/jpeg"
+            );
+          }
+        } catch (r2Error) {
+          console.error("[Cloudflare R2] Upload warning, falling back to disk:", r2Error);
+        }
+      }
 
       // Insert log into the database
       const result = await db.query(
