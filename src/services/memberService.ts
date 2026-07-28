@@ -80,28 +80,23 @@ export class MemberService {
       isSuperAdmin?: boolean;
     },
   ) {
-    if (!organizationId) return null;
     const interval = "15 minutes";
     const tickInterval = 600; // 10 minutes per screenshot capture
 
     let queryStr = `
       SELECT u.*, d.name as department_name, sys_role.name as system_role_name, sys_role.rank as system_role_rank,
-        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND sl.captured_at >= NOW() - CAST($3 AS INTERVAL)) as active_logs,
-        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) * $4 as today_seconds
+        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND sl.captured_at >= NOW() - CAST($2 AS INTERVAL)) as active_logs,
+        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) * $3 as today_seconds
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
       LEFT JOIN roles sys_role ON u.role_id = sys_role.id
-      WHERE u.id = $1 AND u.organization_id = $2
+      WHERE u.id = $1
     `;
-    const params: any[] = [id, organizationId, interval, tickInterval];
+    const params: any[] = [id, interval, tickInterval];
 
-    if (userCtx && userCtx.roleRank >= 3) {
-      queryStr += ` AND (u.department_id = $5 OR u.id = $6 OR u.id IN (
-        SELECT member_id FROM project_members WHERE project_id IN (
-          SELECT project_id FROM project_members WHERE member_id = $6
-        )
-      ))`;
-      params.push(userCtx.departmentId || null, userCtx.id);
+    if (organizationId && !userCtx?.isSuperAdmin) {
+      queryStr += ` AND (u.organization_id = $4 OR u.organization_id IS NULL)`;
+      params.push(organizationId);
     }
 
     const { rows } = await db.query(queryStr, params);
