@@ -394,7 +394,11 @@ export class DashboardController {
         return;
       }
 
-      const existingLeave = await LeaveService.getById(id, userCtx.organization_id || null);
+      const existingLeave = await LeaveService.getById(
+        id,
+        userCtx.organization_id || null,
+        userCtx.is_super_admin || false,
+      );
       if (!existingLeave) {
         res.status(404).json({
           error: {
@@ -405,9 +409,25 @@ export class DashboardController {
         return;
       }
 
-      const updated = await LeaveService.updateStatus(id, status, userCtx.organization_id || null);
+      const updated = await LeaveService.updateStatus(
+        id,
+        status,
+        userCtx.organization_id || null,
+        userCtx.is_super_admin || false,
+      );
       if (updated) {
-        const member = await MemberService.getById(updated.memberId, userCtx.organization_id || null);
+        const member = await MemberService.getById(
+          updated.memberId,
+          userCtx.organization_id || null,
+          {
+            id: userCtx.id,
+            roleName: userCtx.role_name || "Teammates",
+            roleRank: userCtx.role_rank || 4,
+            departmentId: userCtx.department_id || null,
+            organizationId: userCtx.organization_id || null,
+            isSuperAdmin: userCtx.is_super_admin || false,
+          },
+        );
         if (member && member.email) {
           emailService.sendLeaveStatusEmail(
             member.email,

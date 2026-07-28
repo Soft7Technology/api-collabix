@@ -9,10 +9,10 @@ export interface LeaveInput {
 }
 
 export class LeaveService {
-  static async getById(id: string, organizationId?: string | null) {
+  static async getById(id: string, organizationId?: string | null, isSuperAdmin?: boolean) {
     let queryStr = "SELECT * FROM leaves WHERE id = $1";
     const params: any[] = [id];
-    if (organizationId) {
+    if (organizationId && !isSuperAdmin) {
       queryStr += " AND (organization_id = $2 OR organization_id IS NULL)";
       params.push(organizationId);
     }
@@ -67,10 +67,15 @@ export class LeaveService {
     };
   }
 
-  static async updateStatus(id: string, status: "APPROVED" | "REJECTED", organizationId?: string | null) {
+  static async updateStatus(
+    id: string,
+    status: "APPROVED" | "REJECTED",
+    organizationId?: string | null,
+    isSuperAdmin?: boolean,
+  ) {
     let queryStr = `UPDATE leaves SET status = $1 WHERE id = $2`;
     const params: any[] = [status, id];
-    if (organizationId) {
+    if (organizationId && !isSuperAdmin) {
       queryStr += ` AND (organization_id = $3 OR organization_id IS NULL)`;
       params.push(organizationId);
     }
@@ -90,10 +95,10 @@ export class LeaveService {
     };
   }
 
-  static async delete(id: string, organizationId?: string | null) {
+  static async delete(id: string, organizationId?: string | null, isSuperAdmin?: boolean) {
     let queryStr = `DELETE FROM leaves WHERE id = $1`;
     const params: any[] = [id];
-    if (organizationId) {
+    if (organizationId && !isSuperAdmin) {
       queryStr += ` AND (organization_id = $2 OR organization_id IS NULL)`;
       params.push(organizationId);
     }
