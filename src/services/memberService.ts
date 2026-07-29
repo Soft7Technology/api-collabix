@@ -359,6 +359,36 @@ export class MemberService {
     };
   }
 
+  static async updatePosition(
+    id: string,
+    designation: string,
+    organizationId?: string | null,
+    isSuperAdmin?: boolean,
+  ) {
+    let queryStr = "UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2";
+    const params: any[] = [designation.trim(), id];
+    if (organizationId && !isSuperAdmin) {
+      queryStr += " AND (organization_id = $3 OR organization_id IS NULL)";
+      params.push(organizationId);
+    }
+    queryStr += " RETURNING *;";
+
+    const { rows } = await db.query(queryStr, params);
+    if (!rows[0]) return null;
+    const r = rows[0];
+    return {
+      id: r.id,
+      name: r.name,
+      role: r.role,
+      designation: r.role,
+      email: r.email,
+      avatarColor: r.avatar_color,
+      initials: r.initials,
+      roleId: r.role_id,
+      status: r.status,
+    };
+  }
+
   static async delete(id: string, organizationId?: string | null) {
     if (!organizationId) return null;
     const { rows } = await db.query(

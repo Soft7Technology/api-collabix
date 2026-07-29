@@ -19,8 +19,8 @@ const cookieOptions = {
   domain: config.COOKIE_DOMAIN || undefined,
 };
 
-const ACCESS_COOKIE_MAX_AGE = 4 * 60 * 60 * 1000; // 4 hours
-const REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
+const ACCESS_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days persistent session
+const REFRESH_COOKIE_MAX_AGE = 60 * 24 * 60 * 60 * 1000; // 60 days persistent session
 
 export class AuthController {
   /**
@@ -168,8 +168,8 @@ export class AuthController {
     try {
       const refreshToken = req.cookies?.refresh_token;
       if (!refreshToken) {
-        res.status(400).json({
-          error: { message: "Refresh token is missing.", status: 400 },
+        res.status(401).json({
+          error: { message: "Refresh token is missing.", status: 401 },
         });
         return;
       }
