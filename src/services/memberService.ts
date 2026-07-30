@@ -56,6 +56,7 @@ export class MemberService {
       name: r.name,
       role: r.system_role_name || r.role || "Teammates",
       designation: r.role,
+      position: r.role,
       email: r.email,
       avatarColor: r.avatar_color,
       initials: r.initials,
@@ -107,6 +108,7 @@ export class MemberService {
       name: r.name,
       role: r.system_role_name || r.role || "Teammates",
       designation: r.role,
+      position: r.role,
       email: r.email,
       avatarColor: r.avatar_color,
       initials: r.initials,
@@ -328,22 +330,60 @@ export class MemberService {
     id: string,
     role: string,
     organizationId?: string | null,
+    userCtx?: { id: string; is_super_admin?: boolean; role_rank?: number }
   ) {
-    if (!organizationId) return null;
+    if (!organizationId && !userCtx?.is_super_admin) return null;
+
+    // 1. Self-editing check: non-super-admin users cannot edit their own role
+    if (userCtx && !userCtx.is_super_admin && userCtx.id === id) {
+      const error: any = new Error("You cannot edit your own role or position.");
+      error.status = 403;
+      throw error;
+    }
+
+    // 2. Fetch target user's current role rank
+    const targetUserRes = await db.query(
+      `SELECT u.id, u.name, r.rank as role_rank FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = $1;`,
+      [id]
+    );
+    const targetUser = targetUserRes.rows[0];
+    if (!targetUser) return null;
+
+    if (userCtx && !userCtx.is_super_admin) {
+      const requesterRank = userCtx.role_rank ?? 4;
+      const targetRank = targetUser.role_rank ?? 4;
+      if (targetRank <= requesterRank) {
+        const error: any = new Error("You can only edit roles for team members below you in the hierarchy.");
+        error.status = 403;
+        throw error;
+      }
+    }
+
+    // 3. Resolve target role & ensure requester cannot assign a role with rank equal/higher than theirs
     const roleRes = await db.query(
-      "SELECT id, name FROM roles WHERE LOWER(name) = LOWER($1);",
+      "SELECT id, name, rank FROM roles WHERE LOWER(name) = LOWER($1);",
       [role.trim()],
     );
     const matchedRole = roleRes.rows[0];
     if (!matchedRole) {
       throw new Error(`Role '${role}' not found.`);
     }
+
+    if (userCtx && !userCtx.is_super_admin) {
+      const requesterRank = userCtx.role_rank ?? 4;
+      if (matchedRole.rank <= requesterRank) {
+        const error: any = new Error("You cannot assign a role with rank equal to or higher than your own.");
+        error.status = 403;
+        throw error;
+      }
+    }
+
     const roleId = matchedRole.id;
     const roleName = matchedRole.name;
 
     const { rows } = await db.query(
-      "UPDATE users SET role = $1, role_id = $2, updated_at = NOW() WHERE id = $3 AND organization_id = $4 RETURNING *;",
-      [roleName, roleId, id, organizationId],
+      "UPDATE users SET role = $1, role_id = $2, updated_at = NOW() WHERE id = $3 RETURNING *;",
+      [roleName, roleId, id],
     );
     if (!rows[0]) return null;
     const r = rows[0];
@@ -363,11 +403,36 @@ export class MemberService {
     id: string,
     designation: string,
     organizationId?: string | null,
-    isSuperAdmin?: boolean,
+    userCtx?: { id: string; is_super_admin?: boolean; role_rank?: number }
   ) {
+    // 1. Self-editing check: non-super-admin users cannot edit their own position
+    if (userCtx && !userCtx.is_super_admin && userCtx.id === id) {
+      const error: any = new Error("You cannot edit your own role or position.");
+      error.status = 403;
+      throw error;
+    }
+
+    // 2. Fetch target user's current role rank
+    const targetUserRes = await db.query(
+      `SELECT u.id, u.name, r.rank as role_rank FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = $1;`,
+      [id]
+    );
+    const targetUser = targetUserRes.rows[0];
+    if (!targetUser) return null;
+
+    if (userCtx && !userCtx.is_super_admin) {
+      const requesterRank = userCtx.role_rank ?? 4;
+      const targetRank = targetUser.role_rank ?? 4;
+      if (targetRank <= requesterRank) {
+        const error: any = new Error("You can only edit positions for team members below you in the hierarchy.");
+        error.status = 403;
+        throw error;
+      }
+    }
+
     let queryStr = "UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2";
     const params: any[] = [designation.trim(), id];
-    if (organizationId && !isSuperAdmin) {
+    if (organizationId && !userCtx?.is_super_admin) {
       queryStr += " AND (organization_id = $3 OR organization_id IS NULL)";
       params.push(organizationId);
     }

@@ -30,11 +30,19 @@ const allowedOrigins = config.FRONTEND_URLS
   ? config.FRONTEND_URLS.split(",").map((o) => o.trim())
   : [config.FRONTEND_URL];
 
+const isDev = process.env.NODE_ENV !== "production";
+
 app.use(
   cors({
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps, curl, or SSR fetch requests)
       if (!origin) return callback(null, true);
+
+      // In development mode, allow any localhost or 127.0.0.1 port (e.g. 3000, 8001, 5173, etc.)
+      if (isDev && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+        return callback(null, true);
+      }
+
       if (
         allowedOrigins.indexOf(origin) !== -1 ||
         allowedOrigins.includes("*")
