@@ -43,9 +43,11 @@ export class UploadController {
         const filePath = path.join(uploadDir, safeName);
         fs.writeFileSync(filePath, buffer);
 
-        const protocol = req.protocol || "https";
-        const host = req.get("host") || "collabix.soft7.in";
-        fileUrl = `${protocol}://${host}/uploads/attachments/${safeName}`;
+        const host = req.get("host") || "";
+        const isProduction = process.env.NODE_ENV === "production" || host.includes("soft7.in");
+        const protocol = isProduction ? "https" : (req.protocol || "http");
+        const baseUrl = isProduction ? "https://collabixapi.soft7.in" : `${protocol}://${host || "localhost:8000"}`;
+        fileUrl = `${baseUrl}/uploads/attachments/${safeName}`;
       }
 
       res.status(201).json({
