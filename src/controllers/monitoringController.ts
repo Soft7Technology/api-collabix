@@ -74,12 +74,14 @@ export class MonitoringController {
         }
       }
 
-      // Insert log into the database
+      const statusParam = (req.body?.status === "inactive" || req.body?.status === "idle") ? "inactive" : "active";
+
+      // Insert log into the database with active/inactive status based on 7-min inactivity threshold
       const result = await db.query(
         `INSERT INTO screen_logs (user_id, screenshot_path, status)
-         VALUES ($1, $2, 'active')
+         VALUES ($1, $2, $3)
          RETURNING id, captured_at;`,
-        [userId, screenshotPath]
+        [userId, screenshotPath, statusParam]
       );
 
       res.status(200).json({
@@ -143,14 +145,6 @@ export class MonitoringController {
         res.status(401).json({ error: { message: "Unauthorized", status: 401 } });
         return;
       }
-
-      const userId = req.user.id;
-
-      // Instantly mark active screen logs as inactive for this user
-      await db.query(
-        `UPDATE screen_logs SET status = 'inactive' WHERE user_id = $1 AND status = 'active';`,
-        [userId]
-      );
 
       res.status(200).json({ message: "Monitoring stopped successfully." });
     } catch (error) {
