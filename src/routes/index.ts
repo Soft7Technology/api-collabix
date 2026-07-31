@@ -137,7 +137,7 @@ router.delete("/meetings/:id", DashboardController.deleteMeeting);
 
 router.get("/leaves", DashboardController.getLeaves);
 router.post("/leaves", DashboardController.createLeave);
-// router.patch("/leaves/:id/status", DashboardController.updateLeaveStatus);
+router.patch("/leaves/:id/status", DashboardController.updateLeaveStatus);
 router.delete("/leaves/:id", DashboardController.deleteLeave);
 
 router.get("/activity", DashboardController.getActivity);
