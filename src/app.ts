@@ -23,8 +23,17 @@ if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
 }
 
-// Serve uploaded screenshots statically
-app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
+// Serve uploaded screenshots & attachments statically with cross-origin headers
+app.use(
+  "/uploads",
+  (req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    next();
+  },
+  express.static(path.resolve(process.cwd(), "uploads")),
+);
 
 const allowedOrigins = config.FRONTEND_URLS
   ? config.FRONTEND_URLS.split(",").map((o) => o.trim())

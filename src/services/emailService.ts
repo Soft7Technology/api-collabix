@@ -58,16 +58,29 @@ class ConsoleEmailProvider implements EmailProvider {
 
 class SmtpEmailProvider implements EmailProvider {
   private transporter: nodemailer.Transporter;
+  private leaveTransporter: nodemailer.Transporter;
 
   constructor() {
     const user = config.SMTP_USER?.trim();
     const pass = config.SMTP_PASS?.trim();
 
+    // Primary Transporter: Password reset & account onboarding (no-reply@soft7.in)
     this.transporter = nodemailer.createTransport({
       host: config.SMTP_HOST,
       port: config.SMTP_PORT,
       secure: config.SMTP_SECURE,
       auth: user && pass ? { user, pass } : undefined,
+    });
+
+    // Secondary Dedicated Transporter: Leave notifications & HR (Soft7.in@gmail.com)
+    const leaveUser = (config.SMTP_LEAVE_USER || "Soft7.in@gmail.com").trim();
+    const leavePass = config.SMTP_LEAVE_PASS?.trim() || pass;
+
+    this.leaveTransporter = nodemailer.createTransport({
+      host: config.SMTP_LEAVE_HOST,
+      port: config.SMTP_LEAVE_PORT,
+      secure: config.SMTP_LEAVE_SECURE,
+      auth: leaveUser && leavePass ? { user: leaveUser, pass: leavePass } : undefined,
     });
   }
 
@@ -90,7 +103,7 @@ class SmtpEmailProvider implements EmailProvider {
           </div>
         `,
       });
-      console.log(`✅  Invitation email sent via SMTP to ${email}`);
+      console.log(`✅  Invitation email sent via SMTP (no-reply@soft7.in) to ${email}`);
     } catch (error) {
       console.error("❌  Failed to send invitation email via SMTP:", error);
       throw error;
@@ -113,7 +126,7 @@ class SmtpEmailProvider implements EmailProvider {
           </div>
         `,
       });
-      console.log(`✅  Password reset email sent via SMTP to ${email}`);
+      console.log(`✅  Password reset email sent via SMTP (no-reply@soft7.in) to ${email}`);
     } catch (error) {
       console.error("❌  Failed to send password reset email via SMTP:", error);
       throw error;
@@ -130,8 +143,8 @@ class SmtpEmailProvider implements EmailProvider {
     try {
       const isApproved = status === "APPROVED";
       const statusLabel = isApproved ? "Approved" : "Rejected";
-      await this.transporter.sendMail({
-        from: config.SMTP_FROM,
+      await this.leaveTransporter.sendMail({
+        from: config.SMTP_LEAVE_FROM,
         to: email,
         subject: `Leave Application ${statusLabel} — SOFT7`,
         html: `
@@ -157,9 +170,9 @@ class SmtpEmailProvider implements EmailProvider {
           </div>
         `,
       });
-      console.log(`✅  Leave status email sent via SMTP to ${email}`);
+      console.log(`✅  Leave status email sent via Leave SMTP (Soft7.in@gmail.com) to ${email}`);
     } catch (error) {
-      console.error("❌  Failed to send leave status email via SMTP:", error);
+      console.error("❌  Failed to send leave status email via Leave SMTP:", error);
       throw error;
     }
   }
