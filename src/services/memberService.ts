@@ -32,41 +32,46 @@ export class MemberService {
 
     let queryStr = `
       SELECT u.*, d.name as department_name, sys_role.name as system_role_name, sys_role.rank as system_role_rank,
-        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND sl.captured_at >= NOW() - CAST($2 AS INTERVAL)) as active_logs,
-        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) * $3 as today_seconds
+        (SELECT status FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_status,
+        (SELECT captured_at FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_time,
+        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) * $2 as today_seconds
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
       LEFT JOIN roles sys_role ON u.role_id = sys_role.id
       WHERE u.organization_id = $1
     `;
-    const params: any[] = [organizationId, interval, tickInterval];
+    const params: any[] = [organizationId, tickInterval];
 
     if (userCtx && userCtx.roleRank >= 3) {
-      queryStr += ` AND (u.department_id = $4 OR u.id = $5 OR u.id IN (
+      queryStr += ` AND (u.department_id = $3 OR u.id = $4 OR u.id IN (
         SELECT member_id FROM project_members WHERE project_id IN (
-          SELECT project_id FROM project_members WHERE member_id = $5
+          SELECT project_id FROM project_members WHERE member_id = $4
         )
       ))`;
       params.push(userCtx.departmentId || null, userCtx.id);
     }
 
     const { rows } = await db.query(queryStr, params);
-    return rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      role: r.system_role_name || r.role || "Teammates",
-      designation: r.role,
-      position: r.role,
-      email: r.email,
-      avatarColor: r.avatar_color,
-      initials: r.initials,
-      roleId: r.role_id,
-      departmentId: r.department_id,
-      department: r.department_name,
-      status: r.active_logs > 0 ? "Active" : "Offline",
-      todaySeconds: r.today_seconds || 0,
-      canCreateTasks: !!r.can_create_tasks,
-    }));
+    return rows.map((r) => {
+      const isRecent = r.latest_log_time && (Date.now() - new Date(r.latest_log_time).getTime() < 12 * 60 * 1000);
+      const isOnline = isRecent && r.latest_log_status === "active";
+      return {
+        id: r.id,
+        name: r.name,
+        role: r.system_role_name || r.role || "Teammates",
+        designation: r.role,
+        position: r.role,
+        email: r.email,
+        avatarColor: r.avatar_color,
+        initials: r.initials,
+        roleId: r.role_id,
+        departmentId: r.department_id,
+        department: r.department_name,
+        status: isOnline ? "Active" : "Offline",
+        todaySeconds: r.today_seconds || 0,
+        canCreateTasks: !!r.can_create_tasks,
+      };
+    });
   }
 
   static async getById(
@@ -81,28 +86,30 @@ export class MemberService {
       isSuperAdmin?: boolean;
     },
   ) {
-    const interval = "15 minutes";
     const tickInterval = 600; // 10 minutes per screenshot capture
 
     let queryStr = `
       SELECT u.*, d.name as department_name, sys_role.name as system_role_name, sys_role.rank as system_role_rank,
-        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND sl.captured_at >= NOW() - CAST($2 AS INTERVAL)) as active_logs,
-        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) * $3 as today_seconds
+        (SELECT status FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_status,
+        (SELECT captured_at FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_time,
+        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) * $2 as today_seconds
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
       LEFT JOIN roles sys_role ON u.role_id = sys_role.id
       WHERE u.id = $1
     `;
-    const params: any[] = [id, interval, tickInterval];
+    const params: any[] = [id, tickInterval];
 
     if (organizationId && !userCtx?.isSuperAdmin) {
-      queryStr += ` AND (u.organization_id = $4 OR u.organization_id IS NULL)`;
+      queryStr += ` AND (u.organization_id = $3 OR u.organization_id IS NULL)`;
       params.push(organizationId);
     }
 
     const { rows } = await db.query(queryStr, params);
     if (!rows[0]) return null;
     const r = rows[0];
+    const isRecent = r.latest_log_time && (Date.now() - new Date(r.latest_log_time).getTime() < 12 * 60 * 1000);
+    const isOnline = isRecent && r.latest_log_status === "active";
     return {
       id: r.id,
       name: r.name,
@@ -115,7 +122,7 @@ export class MemberService {
       roleId: r.role_id,
       departmentId: r.department_id,
       department: r.department_name,
-      status: r.active_logs > 0 ? "Active" : "Offline",
+      status: isOnline ? "Active" : "Offline",
       todaySeconds: r.today_seconds || 0,
       canCreateTasks: !!r.can_create_tasks,
     };

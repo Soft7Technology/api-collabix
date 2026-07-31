@@ -146,6 +146,12 @@ export class MonitoringController {
         return;
       }
 
+      await db.query(
+        `INSERT INTO screen_logs (user_id, screenshot_path, status)
+         VALUES ($1, 'SESSION_STOPPED', 'stopped');`,
+        [req.user.id]
+      );
+
       res.status(200).json({ message: "Monitoring stopped successfully." });
     } catch (error) {
       next(error);
