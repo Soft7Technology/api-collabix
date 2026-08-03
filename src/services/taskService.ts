@@ -68,15 +68,7 @@ export class TaskService {
 
     const { rows } = await db.query(queryStr, params);
 
-    let filteredRows = rows;
-    if (userCtx && userCtx.roleRank === 4) {
-      filteredRows = rows.filter((r) => {
-        const assignees = (r.assignee_id || "").split(",").map((s: string) => s.trim());
-        return assignees.includes(userCtx.id);
-      });
-    }
-
-    return filteredRows.map((r) => {
+    return rows.map((r) => {
       const {
         assignee_id,
         project_id,
