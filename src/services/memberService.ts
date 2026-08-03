@@ -31,39 +31,47 @@ export class MemberService {
     const tickInterval = 600; // 10 minutes per screenshot capture
 
     let queryStr = `
-      SELECT u.*, d.name as department_name,
-        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND sl.captured_at >= NOW() - CAST($2 AS INTERVAL)) as active_logs,
-        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.captured_at >= CURRENT_DATE) * $3 as today_seconds
+      SELECT u.*, d.name as department_name, sys_role.name as system_role_name, sys_role.rank as system_role_rank,
+        (SELECT status FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_status,
+        (SELECT captured_at FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_time,
+        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) * $2 as today_seconds
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
+      LEFT JOIN roles sys_role ON u.role_id = sys_role.id
       WHERE u.organization_id = $1
     `;
-    const params: any[] = [organizationId, interval, tickInterval];
+    const params: any[] = [organizationId, tickInterval];
 
     if (userCtx && userCtx.roleRank >= 3) {
-      queryStr += ` AND (u.department_id = $4 OR u.id = $5 OR u.id IN (
+      queryStr += ` AND (u.department_id = $3 OR u.id = $4 OR u.id IN (
         SELECT member_id FROM project_members WHERE project_id IN (
-          SELECT project_id FROM project_members WHERE member_id = $5
+          SELECT project_id FROM project_members WHERE member_id = $4
         )
       ))`;
       params.push(userCtx.departmentId || null, userCtx.id);
     }
 
     const { rows } = await db.query(queryStr, params);
-    return rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      role: r.role,
-      email: r.email,
-      avatarColor: r.avatar_color,
-      initials: r.initials,
-      roleId: r.role_id,
-      departmentId: r.department_id,
-      department: r.department_name,
-      status: r.active_logs > 0 ? "Active" : "Offline",
-      todaySeconds: r.today_seconds || 0,
-      canCreateTasks: !!r.can_create_tasks,
-    }));
+    return rows.map((r) => {
+      const isRecent = r.latest_log_time && (Date.now() - new Date(r.latest_log_time).getTime() < 12 * 60 * 1000);
+      const isOnline = isRecent && r.latest_log_status === "active";
+      return {
+        id: r.id,
+        name: r.name,
+        role: r.system_role_name || r.role || "Teammates",
+        designation: r.role,
+        position: r.role,
+        email: r.email,
+        avatarColor: r.avatar_color,
+        initials: r.initials,
+        roleId: r.role_id,
+        departmentId: r.department_id,
+        department: r.department_name,
+        status: isOnline ? "Active" : "Offline",
+        todaySeconds: r.today_seconds || 0,
+        canCreateTasks: !!r.can_create_tasks,
+      };
+    });
   }
 
   static async getById(
@@ -78,43 +86,43 @@ export class MemberService {
       isSuperAdmin?: boolean;
     },
   ) {
-    if (!organizationId) return null;
-    const interval = "15 minutes";
     const tickInterval = 600; // 10 minutes per screenshot capture
 
     let queryStr = `
-      SELECT u.*, d.name as department_name,
-        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND sl.captured_at >= NOW() - CAST($3 AS INTERVAL)) as active_logs,
-        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.captured_at >= CURRENT_DATE) * $4 as today_seconds
+      SELECT u.*, d.name as department_name, sys_role.name as system_role_name, sys_role.rank as system_role_rank,
+        (SELECT status FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_status,
+        (SELECT captured_at FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_time,
+        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) * $2 as today_seconds
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
-      WHERE u.id = $1 AND u.organization_id = $2
+      LEFT JOIN roles sys_role ON u.role_id = sys_role.id
+      WHERE u.id = $1
     `;
-    const params: any[] = [id, organizationId, interval, tickInterval];
+    const params: any[] = [id, tickInterval];
 
-    if (userCtx && userCtx.roleRank >= 3) {
-      queryStr += ` AND (u.department_id = $5 OR u.id = $6 OR u.id IN (
-        SELECT member_id FROM project_members WHERE project_id IN (
-          SELECT project_id FROM project_members WHERE member_id = $6
-        )
-      ))`;
-      params.push(userCtx.departmentId || null, userCtx.id);
+    if (organizationId && !userCtx?.isSuperAdmin) {
+      queryStr += ` AND (u.organization_id = $3 OR u.organization_id IS NULL)`;
+      params.push(organizationId);
     }
 
     const { rows } = await db.query(queryStr, params);
     if (!rows[0]) return null;
     const r = rows[0];
+    const isRecent = r.latest_log_time && (Date.now() - new Date(r.latest_log_time).getTime() < 12 * 60 * 1000);
+    const isOnline = isRecent && r.latest_log_status === "active";
     return {
       id: r.id,
       name: r.name,
-      role: r.role,
+      role: r.system_role_name || r.role || "Teammates",
+      designation: r.role,
+      position: r.role,
       email: r.email,
       avatarColor: r.avatar_color,
       initials: r.initials,
       roleId: r.role_id,
       departmentId: r.department_id,
       department: r.department_name,
-      status: r.active_logs > 0 ? "Active" : "Offline",
+      status: isOnline ? "Active" : "Offline",
       todaySeconds: r.today_seconds || 0,
       canCreateTasks: !!r.can_create_tasks,
     };
@@ -329,22 +337,60 @@ export class MemberService {
     id: string,
     role: string,
     organizationId?: string | null,
+    userCtx?: { id: string; is_super_admin?: boolean; role_rank?: number }
   ) {
-    if (!organizationId) return null;
+    if (!organizationId && !userCtx?.is_super_admin) return null;
+
+    // 1. Self-editing check: non-super-admin users cannot edit their own role
+    if (userCtx && !userCtx.is_super_admin && userCtx.id === id) {
+      const error: any = new Error("You cannot edit your own role or position.");
+      error.status = 403;
+      throw error;
+    }
+
+    // 2. Fetch target user's current role rank
+    const targetUserRes = await db.query(
+      `SELECT u.id, u.name, r.rank as role_rank FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = $1;`,
+      [id]
+    );
+    const targetUser = targetUserRes.rows[0];
+    if (!targetUser) return null;
+
+    if (userCtx && !userCtx.is_super_admin) {
+      const requesterRank = userCtx.role_rank ?? 4;
+      const targetRank = targetUser.role_rank ?? 4;
+      if (targetRank <= requesterRank) {
+        const error: any = new Error("You can only edit roles for team members below you in the hierarchy.");
+        error.status = 403;
+        throw error;
+      }
+    }
+
+    // 3. Resolve target role & ensure requester cannot assign a role with rank equal/higher than theirs
     const roleRes = await db.query(
-      "SELECT id, name FROM roles WHERE LOWER(name) = LOWER($1);",
+      "SELECT id, name, rank FROM roles WHERE LOWER(name) = LOWER($1);",
       [role.trim()],
     );
     const matchedRole = roleRes.rows[0];
     if (!matchedRole) {
       throw new Error(`Role '${role}' not found.`);
     }
+
+    if (userCtx && !userCtx.is_super_admin) {
+      const requesterRank = userCtx.role_rank ?? 4;
+      if (matchedRole.rank <= requesterRank) {
+        const error: any = new Error("You cannot assign a role with rank equal to or higher than your own.");
+        error.status = 403;
+        throw error;
+      }
+    }
+
     const roleId = matchedRole.id;
     const roleName = matchedRole.name;
 
     const { rows } = await db.query(
-      "UPDATE users SET role = $1, role_id = $2, updated_at = NOW() WHERE id = $3 AND organization_id = $4 RETURNING *;",
-      [roleName, roleId, id, organizationId],
+      "UPDATE users SET role = $1, role_id = $2, updated_at = NOW() WHERE id = $3 RETURNING *;",
+      [roleName, roleId, id],
     );
     if (!rows[0]) return null;
     const r = rows[0];
@@ -352,6 +398,61 @@ export class MemberService {
       id: r.id,
       name: r.name,
       role: r.role,
+      email: r.email,
+      avatarColor: r.avatar_color,
+      initials: r.initials,
+      roleId: r.role_id,
+      status: r.status,
+    };
+  }
+
+  static async updatePosition(
+    id: string,
+    designation: string,
+    organizationId?: string | null,
+    userCtx?: { id: string; is_super_admin?: boolean; role_rank?: number }
+  ) {
+    // 1. Self-editing check: non-super-admin users cannot edit their own position
+    if (userCtx && !userCtx.is_super_admin && userCtx.id === id) {
+      const error: any = new Error("You cannot edit your own role or position.");
+      error.status = 403;
+      throw error;
+    }
+
+    // 2. Fetch target user's current role rank
+    const targetUserRes = await db.query(
+      `SELECT u.id, u.name, r.rank as role_rank FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = $1;`,
+      [id]
+    );
+    const targetUser = targetUserRes.rows[0];
+    if (!targetUser) return null;
+
+    if (userCtx && !userCtx.is_super_admin) {
+      const requesterRank = userCtx.role_rank ?? 4;
+      const targetRank = targetUser.role_rank ?? 4;
+      if (targetRank <= requesterRank) {
+        const error: any = new Error("You can only edit positions for team members below you in the hierarchy.");
+        error.status = 403;
+        throw error;
+      }
+    }
+
+    let queryStr = "UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2";
+    const params: any[] = [designation.trim(), id];
+    if (organizationId && !userCtx?.is_super_admin) {
+      queryStr += " AND (organization_id = $3 OR organization_id IS NULL)";
+      params.push(organizationId);
+    }
+    queryStr += " RETURNING *;";
+
+    const { rows } = await db.query(queryStr, params);
+    if (!rows[0]) return null;
+    const r = rows[0];
+    return {
+      id: r.id,
+      name: r.name,
+      role: r.role,
+      designation: r.role,
       email: r.email,
       avatarColor: r.avatar_color,
       initials: r.initials,

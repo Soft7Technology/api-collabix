@@ -38,6 +38,8 @@ export const upload = multer({
   }
 });
 
+import { uploadToR2 } from "../services/storageService.js";
+
 export class MonitoringController {
   static async uploadScreenshot(req: Request, res: Response, next: NextFunction) {
     try {
@@ -53,14 +55,33 @@ export class MonitoringController {
 
       const userId = req.user.id;
       const filename = req.file.filename;
-      const screenshotPath = `/uploads/screenshots/${filename}`;
+      let screenshotPath = `/uploads/screenshots/${filename}`;
 
-      // Insert log into the database
+      // Upload to Cloudflare R2 if configured
+      if (process.env.CLOUDFLARE_R2_ACCESS_KEY_ID && process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY) {
+        try {
+          const fileBuffer = req.file.buffer || (req.file.path ? fs.readFileSync(req.file.path) : null);
+          if (fileBuffer) {
+            screenshotPath = await uploadToR2(
+              "screenshots",
+              fileBuffer,
+              filename,
+              req.file.mimetype || "image/jpeg"
+            );
+          }
+        } catch (r2Error) {
+          console.error("[Cloudflare R2] Upload warning, falling back to disk:", r2Error);
+        }
+      }
+
+      const statusParam = (req.body?.status === "inactive" || req.body?.status === "idle") ? "inactive" : "active";
+
+      // Insert log into the database with active/inactive status based on 7-min inactivity threshold
       const result = await db.query(
         `INSERT INTO screen_logs (user_id, screenshot_path, status)
-         VALUES ($1, $2, 'active')
+         VALUES ($1, $2, $3)
          RETURNING id, captured_at;`,
-        [userId, screenshotPath]
+        [userId, screenshotPath, statusParam]
       );
 
       res.status(200).json({
@@ -125,12 +146,10 @@ export class MonitoringController {
         return;
       }
 
-      const userId = req.user.id;
-
-      // Instantly mark active screen logs as inactive for this user
       await db.query(
-        `UPDATE screen_logs SET status = 'inactive' WHERE user_id = $1 AND status = 'active';`,
-        [userId]
+        `INSERT INTO screen_logs (user_id, screenshot_path, status)
+         VALUES ($1, 'SESSION_STOPPED', 'stopped');`,
+        [req.user.id]
       );
 
       res.status(200).json({ message: "Monitoring stopped successfully." });

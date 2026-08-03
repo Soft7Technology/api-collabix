@@ -79,6 +79,10 @@ router.patch(
   "/team/:id/task-rights",
   MemberController.updateTaskRights,
 );
+router.patch(
+  "/team/:id/position",
+  MemberController.updatePosition,
+);
 router.delete(
   "/team/:id",
   requirePermission("admin:manage"),
@@ -137,6 +141,16 @@ router.patch("/leaves/:id/status", DashboardController.updateLeaveStatus);
 router.delete("/leaves/:id", DashboardController.deleteLeave);
 
 router.get("/activity", DashboardController.getActivity);
+
+import { UploadController, attachmentMulter } from "../controllers/uploadController.js";
+
+// Attachment Upload & Streaming Routes (Cloudflare R2 Proxy)
+router.post(
+  "/upload/attachment",
+  attachmentMulter.single("file"),
+  UploadController.uploadAttachment,
+);
+router.get("/upload/file/*", UploadController.streamFile);
 
 // Screen monitoring routes
 router.post(

@@ -71,10 +71,18 @@ export class MemberController {
     try {
       const { id } = req.params;
       const { role } = req.body;
+      const userCtx = req.user
+        ? {
+            id: req.user.id,
+            is_super_admin: req.user.is_super_admin || false,
+            role_rank: req.user.role_rank || 4,
+          }
+        : undefined;
       const member = await MemberService.updateRole(
         id,
         role,
         req.user?.organization_id || null,
+        userCtx,
       );
       if (!member) {
         res
@@ -87,6 +95,44 @@ export class MemberController {
           req.user.id,
           "updated role",
           member.name,
+        );
+      }
+      res.json(member);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async updatePosition(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { designation } = req.body;
+      if (!designation || typeof designation !== "string") {
+        res.status(400).json({ error: { message: "Position / designation is required.", status: 400 } });
+        return;
+      }
+      const userCtx = req.user
+        ? {
+            id: req.user.id,
+            is_super_admin: req.user.is_super_admin || false,
+            role_rank: req.user.role_rank || 4,
+          }
+        : undefined;
+      const member = await MemberService.updatePosition(
+        id,
+        designation,
+        req.user?.organization_id || null,
+        userCtx,
+      );
+      if (!member) {
+        res.status(404).json({ error: { message: "Member not found", status: 404 } });
+        return;
+      }
+      if (req.user) {
+        await DashboardService.logActivity(
+          req.user.id,
+          "updated position",
+          `for ${member.name}`,
         );
       }
       res.json(member);

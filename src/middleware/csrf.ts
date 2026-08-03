@@ -25,6 +25,7 @@ export function validateCSRF(req: Request, res: Response, next: NextFunction) {
       sameSite: "lax",
       path: "/",
       domain: isLocalhost ? undefined : (config.COOKIE_DOMAIN || undefined),
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
   }
 

@@ -19,8 +19,8 @@ const cookieOptions = {
   domain: config.COOKIE_DOMAIN || undefined,
 };
 
-const ACCESS_COOKIE_MAX_AGE = 4 * 60 * 60 * 1000; // 4 hours
-const REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
+const ACCESS_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days persistent session
+const REFRESH_COOKIE_MAX_AGE = 60 * 24 * 60 * 60 * 1000; // 60 days persistent session
 
 export class AuthController {
   /**
@@ -58,6 +58,7 @@ export class AuthController {
       sameSite: "lax",
       path: "/",
       domain: domainValue,
+      maxAge: REFRESH_COOKIE_MAX_AGE,
     });
   }
 
@@ -167,8 +168,8 @@ export class AuthController {
     try {
       const refreshToken = req.cookies?.refresh_token;
       if (!refreshToken) {
-        res.status(400).json({
-          error: { message: "Refresh token is missing.", status: 400 },
+        res.status(401).json({
+          error: { message: "Refresh token is missing.", status: 401 },
         });
         return;
       }
@@ -566,6 +567,48 @@ export class AuthController {
       }
       await AuthService.resetPassword(email, token, password);
       res.json({ message: "Password updated successfully." });
+    } catch (error: any) {
+      res.status(400).json({ error: { message: error.message, status: 400 } });
+    }
+  }
+
+  /**
+   * POST /auth/subscription
+   */
+  static async updateSubscription(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = (req as any).user;
+      if (!user || !user.organizationId) {
+        res.status(400).json({ error: { message: "Organization ID is missing.", status: 400 } });
+        return;
+      }
+
+      // Strict Admin permission check: Only Admins can manage billing / upgrade plan
+      const isAdmin =
+        user.isSuperAdmin ||
+        user.roleName === "Admin" ||
+        user.roleRank === 1 ||
+        (user.permissions && user.permissions.includes("admin:manage"));
+
+      if (!isAdmin) {
+        res.status(403).json({
+          error: {
+            message: "Only organization Admins are authorized to manage billing and upgrade subscription plans.",
+            status: 403,
+          },
+        });
+        return;
+      }
+
+      const { planId, billingCycle } = req.body;
+      const result = await AuthService.updateSubscription({
+        userId: user.id,
+        organizationId: user.organizationId,
+        planId,
+        billingCycle,
+      });
+
+      res.json(result);
     } catch (error: any) {
       res.status(400).json({ error: { message: error.message, status: 400 } });
     }

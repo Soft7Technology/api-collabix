@@ -9,12 +9,16 @@ export interface LeaveInput {
 }
 
 export class LeaveService {
-  static async getById(id: string, organizationId?: string | null) {
-    if (!organizationId) return null;
-    const { rows } = await db.query(
-      "SELECT * FROM leaves WHERE id = $1 AND organization_id = $2;",
-      [id, organizationId],
-    );
+  static async getById(id: string, organizationId?: string | null, isSuperAdmin?: boolean) {
+    let queryStr = "SELECT * FROM leaves WHERE id = $1";
+    const params: any[] = [id];
+    if (organizationId && !isSuperAdmin) {
+      queryStr += " AND (organization_id = $2 OR organization_id IS NULL)";
+      params.push(organizationId);
+    }
+    queryStr += ";";
+
+    const { rows } = await db.query(queryStr, params);
     const r = rows[0];
     if (!r) return null;
     return {
@@ -63,12 +67,21 @@ export class LeaveService {
     };
   }
 
-  static async updateStatus(id: string, status: "APPROVED" | "REJECTED", organizationId?: string | null) {
-    if (!organizationId) return null;
-    const { rows } = await db.query(
-      `UPDATE leaves SET status = $1 WHERE id = $2 AND organization_id = $3 RETURNING *;`,
-      [status, id, organizationId],
-    );
+  static async updateStatus(
+    id: string,
+    status: "APPROVED" | "REJECTED",
+    organizationId?: string | null,
+    isSuperAdmin?: boolean,
+  ) {
+    let queryStr = `UPDATE leaves SET status = $1 WHERE id = $2`;
+    const params: any[] = [status, id];
+    if (organizationId && !isSuperAdmin) {
+      queryStr += ` AND (organization_id = $3 OR organization_id IS NULL)`;
+      params.push(organizationId);
+    }
+    queryStr += ` RETURNING *;`;
+
+    const { rows } = await db.query(queryStr, params);
     const updated = rows[0];
     if (!updated) return null;
     return {
@@ -82,12 +95,16 @@ export class LeaveService {
     };
   }
 
-  static async delete(id: string, organizationId?: string | null) {
-    if (!organizationId) return null;
-    const { rows } = await db.query(
-      "DELETE FROM leaves WHERE id = $1 AND organization_id = $2 RETURNING *;",
-      [id, organizationId],
-    );
+  static async delete(id: string, organizationId?: string | null, isSuperAdmin?: boolean) {
+    let queryStr = `DELETE FROM leaves WHERE id = $1`;
+    const params: any[] = [id];
+    if (organizationId && !isSuperAdmin) {
+      queryStr += ` AND (organization_id = $2 OR organization_id IS NULL)`;
+      params.push(organizationId);
+    }
+    queryStr += ` RETURNING *;`;
+
+    const { rows } = await db.query(queryStr, params);
     const deleted = rows[0];
     if (!deleted) return null;
     return {

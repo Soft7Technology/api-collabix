@@ -51,7 +51,9 @@ export const createTaskSchema = z.object({
     priority: priorityEnum.default("medium"),
     assigneeId: z.string().min(1, "Assignee ID is required"),
     projectId: z.string().min(1, "Project ID is required"),
-    dueDate: z.string().min(1, "Due date is required"),
+    dueDate: z.string().optional().default(""),
+    startDate: z.string().optional().default(""),
+    isStartDateAuto: z.boolean().optional(),
     attachments: z.array(z.any()).optional(),
   }),
 });
@@ -68,6 +70,8 @@ export const updateTaskSchema = z.object({
     assigneeId: z.string().optional(),
     projectId: z.string().optional(),
     dueDate: z.string().optional(),
+    startDate: z.string().optional(),
+    isStartDateAuto: z.boolean().optional(),
     attachments: z.array(z.any()).optional(),
   }),
 });
