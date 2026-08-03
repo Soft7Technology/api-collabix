@@ -227,7 +227,7 @@ export class MemberService {
       throw error;
     }
 
-    const departmentId = member.departmentId ?? null;
+    const departmentId = member.departmentId && member.departmentId !== "none" ? member.departmentId : null;
 
     // Generate random avatar color and initials
     const colors = [
@@ -457,6 +457,25 @@ export class MemberService {
       roleId: r.role_id,
       status: r.status,
     };
+  }
+
+  static async updateDepartment(
+    id: string,
+    departmentId: string | null,
+    organizationId?: string | null,
+    userCtx?: { id: string; is_super_admin?: boolean; role_rank?: number }
+  ) {
+    let queryStr = "UPDATE users SET department_id = $1, updated_at = NOW() WHERE id = $2";
+    const params: any[] = [departmentId, id];
+    if (organizationId && !userCtx?.is_super_admin) {
+      queryStr += " AND (organization_id = $3 OR organization_id IS NULL)";
+      params.push(organizationId);
+    }
+    queryStr += " RETURNING *;";
+
+    const { rows } = await db.query(queryStr, params);
+    if (!rows[0]) return null;
+    return this.getById(id, organizationId, userCtx as any);
   }
 
   static async delete(id: string, organizationId?: string | null) {

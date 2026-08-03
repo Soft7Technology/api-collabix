@@ -83,6 +83,10 @@ router.patch(
   "/team/:id/position",
   MemberController.updatePosition,
 );
+router.patch(
+  "/team/:id/department",
+  MemberController.updateDepartment,
+);
 router.delete(
   "/team/:id",
   requirePermission("admin:manage"),

@@ -30,6 +30,7 @@ export async function runMigrations() {
         executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
       ALTER TABLE screen_logs ADD COLUMN IF NOT EXISTS duration_seconds INT DEFAULT 0;
+      ALTER TABLE projects ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id) ON DELETE SET NULL;
     `);
 
     // 2. Fetch already executed migrations
