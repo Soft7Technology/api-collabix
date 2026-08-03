@@ -34,18 +34,18 @@ export class MemberService {
       SELECT u.*, d.name as department_name, sys_role.name as system_role_name, sys_role.rank as system_role_rank,
         (SELECT status FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_status,
         (SELECT captured_at FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_time,
-        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) * $2 as today_seconds
+        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as today_seconds
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
       LEFT JOIN roles sys_role ON u.role_id = sys_role.id
       WHERE u.organization_id = $1
     `;
-    const params: any[] = [organizationId, tickInterval];
+    const params: any[] = [organizationId];
 
     if (userCtx && userCtx.roleRank >= 3) {
-      queryStr += ` AND (u.department_id = $3 OR u.id = $4 OR u.id IN (
+      queryStr += ` AND (u.department_id = $2 OR u.id = $3 OR u.id IN (
         SELECT member_id FROM project_members WHERE project_id IN (
-          SELECT project_id FROM project_members WHERE member_id = $4
+          SELECT project_id FROM project_members WHERE member_id = $3
         )
       ))`;
       params.push(userCtx.departmentId || null, userCtx.id);
@@ -86,22 +86,20 @@ export class MemberService {
       isSuperAdmin?: boolean;
     },
   ) {
-    const tickInterval = 600; // 10 minutes per screenshot capture
-
     let queryStr = `
       SELECT u.*, d.name as department_name, sys_role.name as system_role_name, sys_role.rank as system_role_rank,
         (SELECT status FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_status,
         (SELECT captured_at FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_time,
-        (SELECT COUNT(*)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'active' AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) * $2 as today_seconds
+        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as today_seconds
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
       LEFT JOIN roles sys_role ON u.role_id = sys_role.id
       WHERE u.id = $1
     `;
-    const params: any[] = [id, tickInterval];
+    const params: any[] = [id];
 
     if (organizationId && !userCtx?.isSuperAdmin) {
-      queryStr += ` AND (u.organization_id = $3 OR u.organization_id IS NULL)`;
+      queryStr += ` AND (u.organization_id = $2 OR u.organization_id IS NULL)`;
       params.push(organizationId);
     }
 

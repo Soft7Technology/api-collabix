@@ -29,6 +29,7 @@ export async function runMigrations() {
         name VARCHAR UNIQUE NOT NULL,
         executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+      ALTER TABLE screen_logs ADD COLUMN IF NOT EXISTS duration_seconds INT DEFAULT 0;
     `);
 
     // 2. Fetch already executed migrations

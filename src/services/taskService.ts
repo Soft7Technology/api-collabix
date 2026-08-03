@@ -52,28 +52,13 @@ export class TaskService {
     }
 
     if (userCtx && userCtx.roleRank > 2) {
-      if (userCtx.roleRank === 3) {
-        // Team leader / Hr: visible projects
-        const visibleProjects = await ProjectService.getAll(userCtx);
-        const visibleProjectIds = visibleProjects.map((p) => p.id);
-        if (visibleProjectIds.length === 0) {
-          return []; // No visible projects -> no tasks
-        }
-        conditions.push(`project_id = ANY($${index})`);
-        params.push(visibleProjectIds);
-      } else if (userCtx.roleRank === 4) {
-        // Teammate: only tasks in visible projects AND assigned to them
-        const visibleProjects = await ProjectService.getAll(userCtx);
-        const visibleProjectIds = visibleProjects.map((p) => p.id);
-        if (visibleProjectIds.length === 0) {
-          return []; // No visible projects -> no tasks
-        }
-        conditions.push(`project_id = ANY($${index++})`);
-        params.push(visibleProjectIds);
-
-        conditions.push(`assignee_id LIKE $${index++}`);
-        params.push(`%${userCtx.id}%`);
+      const visibleProjects = await ProjectService.getAll(userCtx);
+      const visibleProjectIds = visibleProjects.map((p) => p.id);
+      if (visibleProjectIds.length === 0) {
+        return []; // No visible projects -> no tasks
       }
+      conditions.push(`project_id = ANY($${index++})`);
+      params.push(visibleProjectIds);
     }
 
     if (conditions.length > 0) {
