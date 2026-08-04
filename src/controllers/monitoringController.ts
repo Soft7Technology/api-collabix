@@ -76,12 +76,28 @@ export class MonitoringController {
 
       const statusParam = (req.body?.status === "inactive" || req.body?.status === "idle") ? "inactive" : "active";
 
-      // Insert log into the database with active/inactive status based on 7-min inactivity threshold
+      // Calculate exact duration since previous capture
+      const prevLogRes = await db.query(
+        `SELECT captured_at, status FROM screen_logs WHERE user_id = $1 ORDER BY captured_at DESC LIMIT 1;`,
+        [userId]
+      );
+      let durationSeconds = 0;
+      if (prevLogRes.rows.length > 0) {
+        const prev = prevLogRes.rows[0];
+        if (prev.status === "active" || prev.status === "inactive") {
+          const elapsed = Date.now() - new Date(prev.captured_at).getTime();
+          if (elapsed > 0 && elapsed <= 15 * 60 * 1000) {
+            durationSeconds = Math.min(600, Math.floor(elapsed / 1000));
+          }
+        }
+      }
+
+      // Insert log into the database
       const result = await db.query(
-        `INSERT INTO screen_logs (user_id, screenshot_path, status)
-         VALUES ($1, $2, $3)
+        `INSERT INTO screen_logs (user_id, screenshot_path, status, duration_seconds)
+         VALUES ($1, $2, $3, $4)
          RETURNING id, captured_at;`,
-        [userId, screenshotPath, statusParam]
+        [userId, screenshotPath, statusParam, durationSeconds]
       );
 
       res.status(200).json({
@@ -146,10 +162,25 @@ export class MonitoringController {
         return;
       }
 
-      await db.query(
-        `INSERT INTO screen_logs (user_id, screenshot_path, status)
-         VALUES ($1, 'SESSION_STOPPED', 'stopped');`,
+      const prevLogRes = await db.query(
+        `SELECT captured_at, status FROM screen_logs WHERE user_id = $1 ORDER BY captured_at DESC LIMIT 1;`,
         [req.user.id]
+      );
+      let durationSeconds = 0;
+      if (prevLogRes.rows.length > 0) {
+        const prev = prevLogRes.rows[0];
+        if (prev.status === "active" || prev.status === "inactive") {
+          const elapsed = Date.now() - new Date(prev.captured_at).getTime();
+          if (elapsed > 0 && elapsed <= 15 * 60 * 1000) {
+            durationSeconds = Math.min(600, Math.floor(elapsed / 1000));
+          }
+        }
+      }
+
+      await db.query(
+        `INSERT INTO screen_logs (user_id, screenshot_path, status, duration_seconds)
+         VALUES ($1, 'SESSION_STOPPED', 'stopped', $2);`,
+        [req.user.id, durationSeconds]
       );
 
       res.status(200).json({ message: "Monitoring stopped successfully." });

@@ -141,6 +141,41 @@ export class MemberController {
     }
   }
 
+  static async updateDepartment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { departmentId } = req.body;
+      const dId = departmentId && departmentId !== "none" ? departmentId : null;
+      const userCtx = req.user
+        ? {
+            id: req.user.id,
+            is_super_admin: req.user.is_super_admin || false,
+            role_rank: req.user.role_rank || 4,
+          }
+        : undefined;
+      const member = await MemberService.updateDepartment(
+        id,
+        dId,
+        req.user?.organization_id || null,
+        userCtx,
+      );
+      if (!member) {
+        res.status(404).json({ error: { message: "Member not found", status: 404 } });
+        return;
+      }
+      if (req.user) {
+        await DashboardService.logActivity(
+          req.user.id,
+          "updated department",
+          `for ${member.name}`,
+        );
+      }
+      res.json(member);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async delete(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
