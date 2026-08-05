@@ -158,3 +158,25 @@ export const updateOrganizationSchema = z.object({
     timezone: z.string().min(1, "Timezone is required"),
   }),
 });
+
+export const updateSmtpSchema = z.object({
+  body: z.object({
+    provider: z.string().min(1, "Email provider is required"),
+    encryption: z.string().min(1, "Encryption method is required"),
+    host: z.string().min(1, "SMTP host is required"),
+    port: z.number().int().positive("SMTP port must be a positive integer"),
+    username: z.string().min(1, "Username is required"),
+    password: z.string().min(1, "Password is required"),
+    fromName: z.string().min(1, "From Name is required"),
+    fromEmail: z.string().email("Valid From Email is required"),
+    replyTo: z.string().optional().default(""),
+    testRecipient: z.string().optional().default(""),
+  }),
+});
+
+export const testSmtpSchema = z.object({
+  body: z.object({
+    testRecipient: z.string().email("Valid test recipient email is required"),
+  }),
+});
+
