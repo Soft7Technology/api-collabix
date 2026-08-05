@@ -102,8 +102,8 @@ export const inviteMemberSchema = z.object({
     email: z.string().email("Invalid email address"),
     roleId: z.string().uuid(),
     role: z.string().optional(),
-    departmentId: z.string().uuid().optional(),
-    projectId: z.string().optional(),
+    departmentId: z.string().optional().nullable(),
+    projectId: z.string().optional().nullable(),
   }),
 });
 
