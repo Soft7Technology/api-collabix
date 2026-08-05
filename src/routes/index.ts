@@ -9,6 +9,7 @@ import { router as superRouter } from "./super.js";
 import { validate } from "../middleware/validate.js";
 import { requirePermission } from "../middleware/requirePermission.js";
 import { AuthController } from "../controllers/authController.js";
+import { SystemController } from "../controllers/systemController.js";
 import {
   createProjectSchema,
   updateProjectSchema,
@@ -22,6 +23,8 @@ import {
   updateProfileSchema,
   changePasswordSchema,
   updateOrganizationSchema,
+  updateSmtpSchema,
+  testSmtpSchema,
 } from "../schemas/index.js";
 
 const router = Router();
@@ -110,6 +113,26 @@ router.patch(
   validate(updateOrganizationSchema),
   AuthController.updateOrganization,
 );
+
+// System & SMTP Settings
+router.get(
+  "/system/smtp",
+  requirePermission("admin:manage"),
+  SystemController.getSmtpSettings,
+);
+router.patch(
+  "/system/smtp",
+  requirePermission("admin:manage"),
+  validate(updateSmtpSchema),
+  SystemController.updateSmtpSettings,
+);
+router.post(
+  "/system/smtp/test",
+  requirePermission("admin:manage"),
+  validate(testSmtpSchema),
+  SystemController.testSmtpConnection,
+);
+
 
 // Dashboard / Read-only resources
 router.get("/sprints", DashboardController.getSprints);
