@@ -19,3 +19,9 @@ Thumbs.db
 
 # User Uploads
 uploads/
+
+# Temporary Test / Seed Scripts
+src/db/deleteAllSeededTasks.ts
+src/db/reseedOrgTasks.ts
+src/db/seedHuntersTasks.ts
+src/db/seedTestTasks.ts
