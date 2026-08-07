@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || "";
 const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY || "";
@@ -45,4 +45,29 @@ export async function uploadToR2(
     return `${publicUrl}/${fileKey}`;
   }
   return `${endpoint}/${bucketName}/${fileKey}`;
+}
+
+/**
+ * Deletes an object from Cloudflare R2 storage by its public URL.
+ * @param fileUrl The stored public URL of the file
+ */
+export async function deleteFromR2(fileUrl: string): Promise<void> {
+  if (!fileUrl.startsWith("http://") && !fileUrl.startsWith("https://")) {
+    return;
+  }
+
+  try {
+    const urlObj = new URL(fileUrl);
+    const fileKey = urlObj.pathname.replace(/^\//, "");
+
+    await r2Client.send(
+      new DeleteObjectCommand({
+        Bucket: bucketName,
+        Key: fileKey,
+      })
+    );
+    console.log(`[Cloudflare R2] Successfully deleted object: ${fileKey}`);
+  } catch (err) {
+    console.error("[Cloudflare R2] Failed to delete object from R2:", err);
+  }
 }
