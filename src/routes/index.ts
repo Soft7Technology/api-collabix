@@ -130,6 +130,11 @@ router.patch(
   validate(updateSmtpSchema),
   SystemController.updateSmtpSettings,
 );
+router.delete(
+  "/system/smtp",
+  requirePermission("admin:manage"),
+  SystemController.deleteSmtpSettings,
+);
 router.post(
   "/system/smtp/test",
   requirePermission("admin:manage"),

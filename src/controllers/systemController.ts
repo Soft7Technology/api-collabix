@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 import { query, queryOne } from "../db.js";
+import nodemailer from "nodemailer";
+import { config } from "../config/index.js";
 
 export interface SmtpSettings {
   provider: string;
@@ -14,24 +16,35 @@ export interface SmtpSettings {
   testRecipient: string;
 }
 
+// Dynamically extract defaults from env settings config to avoid hardcoded platform.io brand values
+const defaultFromName = config.SMTP_FROM.includes("<")
+  ? config.SMTP_FROM.split("<")[0].replace(/"/g, "").trim()
+  : "Platform Alerts";
+
+const defaultFromEmail = config.SMTP_FROM.includes("<")
+  ? config.SMTP_FROM.split("<")[1].replace(/>/g, "").trim()
+  : "no-reply@platform.io";
+
 let inMemorySmtpSettings: SmtpSettings = {
   provider: "Custom SMTP",
-  encryption: "TLS (Recommended)",
-  host: "smtp.sendgrid.net",
-  port: 587,
-  username: "apikey",
-  password: "••••••••••",
-  fromName: "Platform Alerts",
-  fromEmail: "no-reply@platform.io",
-  replyTo: "support@platform.io",
-  testRecipient: "admin@platform.io",
+  encryption: config.SMTP_SECURE ? "SSL" : "TLS (Recommended)",
+  host: config.SMTP_HOST || "smtp.sendgrid.net",
+  port: Number(config.SMTP_PORT) || 587,
+  username: config.SMTP_USER || "",
+  password: config.SMTP_PASS || "",
+  fromName: defaultFromName,
+  fromEmail: defaultFromEmail,
+  replyTo: defaultFromEmail,
+  testRecipient: defaultFromEmail,
 };
 
 export class SystemController {
   static async getSmtpSettings(req: Request, res: Response) {
+    const orgId = (req.user as any)?.organization_id || 'default';
     try {
       const row = await queryOne<any>(
-        "SELECT * FROM system_smtp_settings WHERE id = 'default'",
+        "SELECT * FROM system_smtp_settings WHERE id = $1",
+        [orgId]
       );
       if (row) {
         return res.json({
@@ -54,6 +67,7 @@ export class SystemController {
   }
 
   static async updateSmtpSettings(req: Request, res: Response) {
+    const orgId = (req.user as any)?.organization_id || 'default';
     const {
       provider,
       encryption,
@@ -83,7 +97,7 @@ export class SystemController {
     try {
       await query(
         `CREATE TABLE IF NOT EXISTS system_smtp_settings (
-          id VARCHAR PRIMARY KEY DEFAULT 'default',
+          id VARCHAR PRIMARY KEY,
           provider VARCHAR NOT NULL,
           encryption VARCHAR NOT NULL,
           host VARCHAR NOT NULL,
@@ -100,7 +114,7 @@ export class SystemController {
 
       await query(
         `INSERT INTO system_smtp_settings (id, provider, encryption, host, port, username, password, from_name, from_email, reply_to, test_recipient, updated_at)
-         VALUES ('default', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)
          ON CONFLICT (id) DO UPDATE SET
           provider = EXCLUDED.provider,
           encryption = EXCLUDED.encryption,
@@ -114,6 +128,7 @@ export class SystemController {
           test_recipient = EXCLUDED.test_recipient,
           updated_at = CURRENT_TIMESTAMP`,
         [
+          orgId,
           provider,
           encryption,
           host,
@@ -137,16 +152,86 @@ export class SystemController {
   }
 
   static async testSmtpConnection(req: Request, res: Response) {
-    const { testRecipient } = req.body;
-    const recipient = testRecipient || inMemorySmtpSettings.testRecipient || "admin@platform.io";
+    const {
+      testRecipient,
+      host,
+      port,
+      username,
+      password,
+      encryption,
+      fromName,
+      fromEmail,
+    } = req.body;
 
-    // Simulate verification delay & successful connection response
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    const recipient = testRecipient || "admin@platform.io";
 
-    return res.json({
-      success: true,
-      message: `Test email sent successfully to ${recipient}! SMTP server connection verified.`,
-      timestamp: new Date().toISOString(),
-    });
+    try {
+      const secure = encryption === "SSL" || Number(port) === 465;
+      const transporter = nodemailer.createTransport({
+        host: host,
+        port: Number(port),
+        secure: secure,
+        auth: username && password ? { user: username, pass: password } : undefined,
+      });
+
+      // Verify connection
+      await transporter.verify();
+
+      // Send the test email
+      await transporter.sendMail({
+        from: `"${fromName || "Platform Alerts"}" <${fromEmail || "no-reply@platform.io"}>`,
+        to: recipient,
+        subject: "SMTP Connection Test — SOFT7",
+        html: `
+          <div style="font-family: sans-serif; padding: 20px; line-height: 1.6; color: #111;">
+            <h2 style="color: #10b981;">SMTP Connection Verified!</h2>
+            <p>This is a test email sent from the Collabix workspace to confirm that your custom SMTP outgoing mail configuration is working correctly.</p>
+            <p><strong>Configuration details:</strong></p>
+            <ul>
+              <li>SMTP Host: <code>${host}</code></li>
+              <li>SMTP Port: <code>${port}</code></li>
+              <li>Encryption: <code>${encryption}</code></li>
+            </ul>
+            <p>If you received this email, you are all set! You can save this configuration in the dashboard settings.</p>
+          </div>
+        `,
+      });
+
+      return res.json({
+        success: true,
+        message: `Test email sent successfully to ${recipient}! SMTP server connection verified.`,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      console.error("❌ SMTP connection test failed:", err);
+      return res.status(400).json({
+        error: {
+          message: `SMTP connection test failed: ${err.message || "Unknown error"}`,
+          status: 400,
+        },
+      });
+    }
+  }
+
+  static async deleteSmtpSettings(req: Request, res: Response) {
+    const orgId = (req.user as any)?.organization_id || 'default';
+    try {
+      await query(
+        "DELETE FROM system_smtp_settings WHERE id = $1",
+        [orgId]
+      );
+      return res.json({
+        message: "SMTP configuration reset to system defaults successfully",
+        settings: inMemorySmtpSettings,
+      });
+    } catch (err) {
+      console.error("❌ Failed to delete SMTP settings:", err);
+      return res.status(500).json({
+        error: {
+          message: "Failed to reset SMTP settings.",
+          status: 500,
+        },
+      });
+    }
   }
 }
