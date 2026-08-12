@@ -7,6 +7,7 @@ export interface ProjectInput {
   dueDate: string;
   color: string;
   memberIds?: string[];
+  departmentId?: string | null;
 }
 
 export class ProjectService {
@@ -44,36 +45,12 @@ export class ProjectService {
         dueDate: r.due_date,
         color: r.color,
         memberIds: r.memberIds,
+        departmentId: r.department_id || null,
       }));
     }
 
-    if (userCtx.roleRank === 3) {
-      // Team leader, Hr: only projects they are member of (similar to Teammates)
-      const { rows } = await db.query(
-        `
-        SELECT p.*, COALESCE(array_agg(pm.member_id) FILTER (WHERE pm.member_id IS NOT NULL), '{}') AS "memberIds"
-        FROM projects p
-        LEFT JOIN project_members pm ON p.id = pm.project_id
-        WHERE p.organization_id = $2
-        GROUP BY p.id
-        HAVING $1 = ANY(COALESCE(array_agg(pm.member_id) FILTER (WHERE pm.member_id IS NOT NULL), '{}'));
-      `,
-        [userCtx.id, userCtx.organizationId || null],
-      );
-      return rows.map((r) => ({
-        id: r.id,
-        name: r.name,
-        description: r.description,
-        status: r.status,
-        progress: Number(r.progress),
-        taskCount: Number(r.task_count),
-        dueDate: r.due_date,
-        color: r.color,
-        memberIds: r.memberIds,
-      }));
-    }
-
-    // Teammate: only projects they are member of
+    // Team Leader, HR, Teammate: projects belonging to user's department OR where user is a project member
+    const deptId = userCtx.departmentId || null;
     const { rows } = await db.query(
       `
       SELECT p.*, COALESCE(array_agg(pm.member_id) FILTER (WHERE pm.member_id IS NOT NULL), '{}') AS "memberIds"
@@ -81,9 +58,10 @@ export class ProjectService {
       LEFT JOIN project_members pm ON p.id = pm.project_id
       WHERE p.organization_id = $2
       GROUP BY p.id
-      HAVING $1 = ANY(COALESCE(array_agg(pm.member_id) FILTER (WHERE pm.member_id IS NOT NULL), '{}'));
+      HAVING ($3::uuid IS NOT NULL AND p.department_id = $3::uuid)
+          OR ($1 = ANY(COALESCE(array_agg(pm.member_id) FILTER (WHERE pm.member_id IS NOT NULL), '{}')));
     `,
-      [userCtx.id, userCtx.organizationId || null],
+      [userCtx.id, userCtx.organizationId || null, deptId],
     );
     return rows.map((r) => ({
       id: r.id,
@@ -95,6 +73,7 @@ export class ProjectService {
       dueDate: r.due_date,
       color: r.color,
       memberIds: r.memberIds,
+      departmentId: r.department_id || null,
     }));
   }
 
@@ -116,12 +95,13 @@ export class ProjectService {
   static async create(project: ProjectInput, organizationId?: string | null) {
     const id = `p${Date.now()}`;
     const client = await pool.connect();
+    const deptId = project.departmentId && project.departmentId !== "none" ? project.departmentId : null;
     try {
       await client.query("BEGIN");
 
       const { rows } = await client.query(
-        `INSERT INTO projects (id, name, description, status, progress, task_count, due_date, color, organization_id)
-         VALUES ($1, $2, $3, $4, 0, 0, $5, $6, $7)
+        `INSERT INTO projects (id, name, description, status, progress, task_count, due_date, color, organization_id, department_id)
+         VALUES ($1, $2, $3, $4, 0, 0, $5, $6, $7, $8)
          RETURNING *;`,
         [
           id,
@@ -131,6 +111,7 @@ export class ProjectService {
           project.dueDate,
           project.color,
           organizationId || null,
+          deptId,
         ],
       );
 
@@ -156,6 +137,7 @@ export class ProjectService {
         dueDate: createdProject.due_date,
         color: createdProject.color,
         memberIds: project.memberIds || [],
+        departmentId: createdProject.department_id || null,
       };
     } catch (error) {
       await client.query("ROLLBACK");
@@ -203,6 +185,11 @@ export class ProjectService {
       if (patch.color !== undefined) {
         fieldsToUpdate.push(`color = $${index++}`);
         values.push(patch.color);
+      }
+      if (patch.departmentId !== undefined) {
+        const dId = patch.departmentId && patch.departmentId !== "none" ? patch.departmentId : null;
+        fieldsToUpdate.push(`department_id = $${index++}`);
+        values.push(dId);
       }
 
       let updatedProject = null;
@@ -272,6 +259,7 @@ export class ProjectService {
         dueDate: updatedProject.due_date,
         color: updatedProject.color,
         memberIds,
+        departmentId: updatedProject.department_id || null,
       };
     } catch (error) {
       await client.query("ROLLBACK");

@@ -9,6 +9,7 @@ import { router as superRouter } from "./super.js";
 import { validate } from "../middleware/validate.js";
 import { requirePermission } from "../middleware/requirePermission.js";
 import { AuthController } from "../controllers/authController.js";
+import { SystemController } from "../controllers/systemController.js";
 import {
   createProjectSchema,
   updateProjectSchema,
@@ -22,6 +23,8 @@ import {
   updateProfileSchema,
   changePasswordSchema,
   updateOrganizationSchema,
+  updateSmtpSchema,
+  testSmtpSchema,
 } from "../schemas/index.js";
 
 const router = Router();
@@ -79,6 +82,14 @@ router.patch(
   "/team/:id/task-rights",
   MemberController.updateTaskRights,
 );
+router.patch(
+  "/team/:id/position",
+  MemberController.updatePosition,
+);
+router.patch(
+  "/team/:id/department",
+  MemberController.updateDepartment,
+);
 router.delete(
   "/team/:id",
   requirePermission("admin:manage"),
@@ -106,6 +117,26 @@ router.patch(
   validate(updateOrganizationSchema),
   AuthController.updateOrganization,
 );
+
+// System & SMTP Settings
+router.get(
+  "/system/smtp",
+  requirePermission("admin:manage"),
+  SystemController.getSmtpSettings,
+);
+router.patch(
+  "/system/smtp",
+  requirePermission("admin:manage"),
+  validate(updateSmtpSchema),
+  SystemController.updateSmtpSettings,
+);
+router.post(
+  "/system/smtp/test",
+  requirePermission("admin:manage"),
+  validate(testSmtpSchema),
+  SystemController.testSmtpConnection,
+);
+
 
 // Dashboard / Read-only resources
 router.get("/sprints", DashboardController.getSprints);
@@ -137,6 +168,16 @@ router.patch("/leaves/:id/status", DashboardController.updateLeaveStatus);
 router.delete("/leaves/:id", DashboardController.deleteLeave);
 
 router.get("/activity", DashboardController.getActivity);
+
+import { UploadController, attachmentMulter } from "../controllers/uploadController.js";
+
+// Attachment Upload & Streaming Routes (Cloudflare R2 Proxy)
+router.post(
+  "/upload/attachment",
+  attachmentMulter.single("file"),
+  UploadController.uploadAttachment,
+);
+router.get("/upload/file/*", UploadController.streamFile);
 
 // Screen monitoring routes
 router.post(

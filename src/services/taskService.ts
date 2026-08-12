@@ -1,6 +1,10 @@
 import { db, pool } from "../db/index.js";
 import { ProjectService } from "./projectService.js";
 
+function getTodayIST(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+}
+
 export interface TaskInput {
   title: string;
   description?: string;
@@ -8,7 +12,9 @@ export interface TaskInput {
   priority: string;
   assigneeId: string;
   projectId: string;
-  dueDate: string;
+  dueDate?: string;
+  startDate?: string;
+  isStartDateAuto?: boolean;
   sprintId?: string;
   attachments?: any[];
 }
@@ -46,25 +52,13 @@ export class TaskService {
     }
 
     if (userCtx && userCtx.roleRank > 2) {
-      if (userCtx.roleRank === 3) {
-        // Team leader / Hr: visible projects
-        const visibleProjects = await ProjectService.getAll(userCtx);
-        const visibleProjectIds = visibleProjects.map((p) => p.id);
-        if (visibleProjectIds.length === 0) {
-          return []; // No visible projects -> no tasks
-        }
-        conditions.push(`project_id = ANY($${index})`);
-        params.push(visibleProjectIds);
-      } else if (userCtx.roleRank === 4) {
-        // Teammate: projects they are member of (same as rank 3)
-        const visibleProjects = await ProjectService.getAll(userCtx);
-        const visibleProjectIds = visibleProjects.map((p) => p.id);
-        if (visibleProjectIds.length === 0) {
-          return []; // No visible projects -> no tasks
-        }
-        conditions.push(`project_id = ANY($${index})`);
-        params.push(visibleProjectIds);
+      const visibleProjects = await ProjectService.getAll(userCtx);
+      const visibleProjectIds = visibleProjects.map((p) => p.id);
+      if (visibleProjectIds.length === 0) {
+        return []; // No visible projects -> no tasks
       }
+      conditions.push(`project_id = ANY($${index++})`);
+      params.push(visibleProjectIds);
     }
 
     if (conditions.length > 0) {
@@ -73,11 +67,14 @@ export class TaskService {
     queryStr += " ORDER BY created_at DESC;";
 
     const { rows } = await db.query(queryStr, params);
+
     return rows.map((r) => {
       const {
         assignee_id,
         project_id,
         due_date,
+        start_date,
+        is_start_date_auto,
         created_at,
         updated_at,
         sprint_id,
@@ -88,7 +85,9 @@ export class TaskService {
         ...rest,
         assigneeId: assignee_id,
         projectId: project_id,
-        dueDate: due_date,
+        dueDate: due_date || "",
+        startDate: start_date || "",
+        isStartDateAuto: !!is_start_date_auto,
         createdAt: created_at,
         updatedAt: updated_at,
         sprintId: sprint_id,
@@ -127,7 +126,9 @@ export class TaskService {
       ...r,
       assigneeId: r.assignee_id,
       projectId: r.project_id,
-      dueDate: r.due_date,
+      dueDate: r.due_date || "",
+      startDate: r.start_date || "",
+      isStartDateAuto: !!r.is_start_date_auto,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
       sprintId: r.sprint_id,
@@ -155,8 +156,20 @@ export class TaskService {
       .filter(Boolean);
     for (const assignee of assignees) {
       if (!memberIds.has(assignee)) {
-        throw new Error("this user is not in project");
+        await db.query(
+          "INSERT INTO project_members (project_id, member_id) VALUES ($1, $2) ON CONFLICT DO NOTHING;",
+          [task.projectId, assignee],
+        );
       }
+    }
+
+    let finalStartDate = (task.startDate || "").trim();
+    let finalIsAuto = task.isStartDateAuto || false;
+
+    // Auto-set start_date if status is 'todo' or 'in_progress' and start_date is empty
+    if (!finalStartDate && ["todo", "in_progress"].includes(task.status)) {
+      finalStartDate = getTodayIST();
+      finalIsAuto = true;
     }
 
     const id = `t${Date.now()}`;
@@ -166,8 +179,8 @@ export class TaskService {
       await client.query("BEGIN");
 
       const { rows } = await client.query(
-        `INSERT INTO tasks (id, title, description, status, priority, assignee_id, project_id, due_date, created_at, updated_at, sprint_id, organization_id, attachments)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
+        `INSERT INTO tasks (id, title, description, status, priority, assignee_id, project_id, due_date, start_date, is_start_date_auto, created_at, updated_at, sprint_id, organization_id, attachments)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb)
          RETURNING *;`,
         [
           id,
@@ -177,7 +190,9 @@ export class TaskService {
           task.priority,
           task.assigneeId,
           task.projectId,
-          task.dueDate,
+          task.dueDate || "",
+          finalStartDate,
+          finalIsAuto,
           createdAt,
           createdAt,
           task.sprintId || null,
@@ -206,6 +221,8 @@ export class TaskService {
         assignee_id,
         project_id,
         due_date,
+        start_date,
+        is_start_date_auto,
         created_at,
         updated_at,
         sprint_id,
@@ -216,7 +233,9 @@ export class TaskService {
         ...rest,
         assigneeId: assignee_id,
         projectId: project_id,
-        dueDate: due_date,
+        dueDate: due_date || "",
+        startDate: start_date || "",
+        isStartDateAuto: !!is_start_date_auto,
         createdAt: created_at,
         updatedAt: updated_at,
         sprintId: sprint_id,
@@ -278,6 +297,25 @@ export class TaskService {
         fieldsToUpdate.push(`description = $${index++}`);
         values.push(patch.description);
       }
+
+      // Check status & start_date auto-assignment
+      const nextStatus = patch.status !== undefined ? patch.status : currentTask.status;
+      let nextStartDate = patch.startDate !== undefined ? patch.startDate.trim() : (currentTask.startDate || "");
+      let nextIsAuto = patch.isStartDateAuto !== undefined ? patch.isStartDateAuto : (currentTask.isStartDateAuto || false);
+
+      if (patch.startDate !== undefined) {
+        if (patch.startDate.trim() !== (currentTask.startDate || "")) {
+          if (patch.isStartDateAuto === undefined) {
+            nextIsAuto = false;
+          }
+        }
+      }
+
+      if (!nextStartDate && ["todo", "in_progress"].includes(nextStatus)) {
+        nextStartDate = getTodayIST();
+        nextIsAuto = true;
+      }
+
       if (patch.status !== undefined) {
         fieldsToUpdate.push(`status = $${index++}`);
         values.push(patch.status);
@@ -297,6 +335,14 @@ export class TaskService {
       if (patch.dueDate !== undefined) {
         fieldsToUpdate.push(`due_date = $${index++}`);
         values.push(patch.dueDate);
+      }
+      if (patch.startDate !== undefined || nextStartDate !== (currentTask.startDate || "")) {
+        fieldsToUpdate.push(`start_date = $${index++}`);
+        values.push(nextStartDate);
+      }
+      if (patch.isStartDateAuto !== undefined || nextIsAuto !== (currentTask.isStartDateAuto || false)) {
+        fieldsToUpdate.push(`is_start_date_auto = $${index++}`);
+        values.push(nextIsAuto);
       }
       // 👈 Handle dynamic updates for sprint_id
       if (patch.sprintId !== undefined) {

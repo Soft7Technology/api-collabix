@@ -38,6 +38,8 @@ export const upload = multer({
   }
 });
 
+import { uploadToR2 } from "../services/storageService.js";
+
 export class MonitoringController {
   static async uploadScreenshot(req: Request, res: Response, next: NextFunction) {
     try {
@@ -53,14 +55,49 @@ export class MonitoringController {
 
       const userId = req.user.id;
       const filename = req.file.filename;
-      const screenshotPath = `/uploads/screenshots/${filename}`;
+      let screenshotPath = `/uploads/screenshots/${filename}`;
+
+      // Upload to Cloudflare R2 if configured
+      if (process.env.CLOUDFLARE_R2_ACCESS_KEY_ID && process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY) {
+        try {
+          const fileBuffer = req.file.buffer || (req.file.path ? fs.readFileSync(req.file.path) : null);
+          if (fileBuffer) {
+            screenshotPath = await uploadToR2(
+              "screenshots",
+              fileBuffer,
+              filename,
+              req.file.mimetype || "image/jpeg"
+            );
+          }
+        } catch (r2Error) {
+          console.error("[Cloudflare R2] Upload warning, falling back to disk:", r2Error);
+        }
+      }
+
+      const statusParam = (req.body?.status === "inactive" || req.body?.status === "idle") ? "inactive" : "active";
+
+      // Calculate exact duration since previous capture
+      const prevLogRes = await db.query(
+        `SELECT captured_at, status FROM screen_logs WHERE user_id = $1 ORDER BY captured_at DESC LIMIT 1;`,
+        [userId]
+      );
+      let durationSeconds = 0;
+      if (prevLogRes.rows.length > 0) {
+        const prev = prevLogRes.rows[0];
+        if (prev.status === "active" || prev.status === "inactive") {
+          const elapsed = Date.now() - new Date(prev.captured_at).getTime();
+          if (elapsed > 0 && elapsed <= 15 * 60 * 1000) {
+            durationSeconds = Math.min(600, Math.floor(elapsed / 1000));
+          }
+        }
+      }
 
       // Insert log into the database
       const result = await db.query(
-        `INSERT INTO screen_logs (user_id, screenshot_path, status)
-         VALUES ($1, $2, 'active')
+        `INSERT INTO screen_logs (user_id, screenshot_path, status, duration_seconds)
+         VALUES ($1, $2, $3, $4)
          RETURNING id, captured_at;`,
-        [userId, screenshotPath]
+        [userId, screenshotPath, statusParam, durationSeconds]
       );
 
       res.status(200).json({
@@ -125,12 +162,25 @@ export class MonitoringController {
         return;
       }
 
-      const userId = req.user.id;
+      const prevLogRes = await db.query(
+        `SELECT captured_at, status FROM screen_logs WHERE user_id = $1 ORDER BY captured_at DESC LIMIT 1;`,
+        [req.user.id]
+      );
+      let durationSeconds = 0;
+      if (prevLogRes.rows.length > 0) {
+        const prev = prevLogRes.rows[0];
+        if (prev.status === "active" || prev.status === "inactive") {
+          const elapsed = Date.now() - new Date(prev.captured_at).getTime();
+          if (elapsed > 0 && elapsed <= 15 * 60 * 1000) {
+            durationSeconds = Math.min(600, Math.floor(elapsed / 1000));
+          }
+        }
+      }
 
-      // Instantly mark active screen logs as inactive for this user
       await db.query(
-        `UPDATE screen_logs SET status = 'inactive' WHERE user_id = $1 AND status = 'active';`,
-        [userId]
+        `INSERT INTO screen_logs (user_id, screenshot_path, status, duration_seconds)
+         VALUES ($1, 'SESSION_STOPPED', 'stopped', $2);`,
+        [req.user.id, durationSeconds]
       );
 
       res.status(200).json({ message: "Monitoring stopped successfully." });

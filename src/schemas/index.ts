@@ -51,7 +51,9 @@ export const createTaskSchema = z.object({
     priority: priorityEnum.default("medium"),
     assigneeId: z.string().min(1, "Assignee ID is required"),
     projectId: z.string().min(1, "Project ID is required"),
-    dueDate: z.string().min(1, "Due date is required"),
+    dueDate: z.string().optional().default(""),
+    startDate: z.string().optional().default(""),
+    isStartDateAuto: z.boolean().optional(),
     attachments: z.array(z.any()).optional(),
   }),
 });
@@ -68,6 +70,8 @@ export const updateTaskSchema = z.object({
     assigneeId: z.string().optional(),
     projectId: z.string().optional(),
     dueDate: z.string().optional(),
+    startDate: z.string().optional(),
+    isStartDateAuto: z.boolean().optional(),
     attachments: z.array(z.any()).optional(),
   }),
 });
@@ -98,8 +102,8 @@ export const inviteMemberSchema = z.object({
     email: z.string().email("Invalid email address"),
     roleId: z.string().uuid(),
     role: z.string().optional(),
-    departmentId: z.string().uuid().optional(),
-    projectId: z.string().optional(),
+    departmentId: z.string().optional().nullable(),
+    projectId: z.string().optional().nullable(),
   }),
 });
 
@@ -154,3 +158,25 @@ export const updateOrganizationSchema = z.object({
     timezone: z.string().min(1, "Timezone is required"),
   }),
 });
+
+export const updateSmtpSchema = z.object({
+  body: z.object({
+    provider: z.string().min(1, "Email provider is required"),
+    encryption: z.string().min(1, "Encryption method is required"),
+    host: z.string().min(1, "SMTP host is required"),
+    port: z.number().int().positive("SMTP port must be a positive integer"),
+    username: z.string().min(1, "Username is required"),
+    password: z.string().min(1, "Password is required"),
+    fromName: z.string().min(1, "From Name is required"),
+    fromEmail: z.string().email("Valid From Email is required"),
+    replyTo: z.string().optional().default(""),
+    testRecipient: z.string().optional().default(""),
+  }),
+});
+
+export const testSmtpSchema = z.object({
+  body: z.object({
+    testRecipient: z.string().email("Valid test recipient email is required"),
+  }),
+});
+

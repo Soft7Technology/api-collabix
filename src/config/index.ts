@@ -43,6 +43,17 @@ const envSchema = z
     SMTP_FROM: z
       .string()
       .default("Collabix Soft7 Onboarding <no-reply@collabix.com>"),
+    // Dedicated Leave / HR Email Service (Soft7.in@gmail.com)
+    SMTP_LEAVE_HOST: z.string().default("smtp.gmail.com"),
+    SMTP_LEAVE_PORT: z.coerce.number().default(465),
+    SMTP_LEAVE_SECURE: z
+      .preprocess((val) => val === "true" || val === true, z.boolean())
+      .default(true),
+    SMTP_LEAVE_USER: z.string().default("Soft7.in@gmail.com"),
+    SMTP_LEAVE_PASS: z.string().optional(),
+    SMTP_LEAVE_FROM: z
+      .string()
+      .default("SOFT7 HR <Soft7.in@gmail.com>"),
     COOKIE_DOMAIN: z.string().optional(),
   })
   .superRefine((env, context) => {
