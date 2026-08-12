@@ -1,5 +1,6 @@
 import { config } from "../config/index.js";
 import nodemailer from "nodemailer";
+import { queryOne } from "../db.js";
 
 export interface EmailProvider {
   sendInvitationEmail(email: string, invitationUrl: string): Promise<void>;
@@ -56,46 +57,76 @@ class ConsoleEmailProvider implements EmailProvider {
   }
 }
 
-class SmtpEmailProvider implements EmailProvider {
-  private transporter: nodemailer.Transporter;
-  private leaveTransporter: nodemailer.Transporter;
+async function getOrgIdForEmail(email: string): Promise<string> {
+  try {
+    const user = await queryOne<any>(
+      "SELECT organization_id FROM users WHERE LOWER(TRIM(email)) = LOWER(TRIM($1))",
+      [email]
+    );
+    return user?.organization_id || "default";
+  } catch (err) {
+    return "default";
+  }
+}
 
-  constructor() {
-    const user = config.SMTP_USER?.trim();
-    const pass = config.SMTP_PASS?.trim();
-
-    // Primary Transporter: Password reset & account onboarding (no-reply@soft7.in)
-    this.transporter = nodemailer.createTransport({
-      host: config.SMTP_HOST,
-      port: config.SMTP_PORT,
-      secure: config.SMTP_SECURE,
-      auth: user && pass ? { user, pass } : undefined,
-    });
-
-    // Secondary Dedicated Transporter: Leave notifications & HR (Soft7.in@gmail.com)
-    const leaveUser = (config.SMTP_LEAVE_USER || "Soft7.in@gmail.com").trim();
-    const leavePass = config.SMTP_LEAVE_PASS?.trim() || pass;
-
-    this.leaveTransporter = nodemailer.createTransport({
-      host: config.SMTP_LEAVE_HOST,
-      port: config.SMTP_LEAVE_PORT,
-      secure: config.SMTP_LEAVE_SECURE,
-      auth: leaveUser && leavePass ? { user: leaveUser, pass: leavePass } : undefined,
-    });
+export async function getDynamicTransporter(orgIdOrEmail: string): Promise<{ transporter: nodemailer.Transporter; from: string; fromName: string }> {
+  let orgId = orgIdOrEmail;
+  if (orgIdOrEmail && orgIdOrEmail.includes("@")) {
+    orgId = await getOrgIdForEmail(orgIdOrEmail);
   }
 
+  try {
+    const row = await queryOne<any>(
+      "SELECT * FROM system_smtp_settings WHERE id = $1",
+      [orgId || 'default']
+    );
+    if (row) {
+      const secure = row.encryption === "SSL" || Number(row.port) === 465;
+      const transporter = nodemailer.createTransport({
+        host: row.host,
+        port: Number(row.port),
+        secure: secure,
+        auth: row.username && row.password ? { user: row.username, pass: row.password } : undefined,
+      });
+      const from = `"${row.from_name}" <${row.from_email}>`;
+      return { transporter, from, fromName: row.from_name };
+    }
+  } catch (err) {
+    console.warn("Error loading SMTP settings from database, using env fallback:", err);
+  }
+
+  // Fallback to static env configuration
+  const user = config.SMTP_USER?.trim();
+  const pass = config.SMTP_PASS?.trim();
+  const transporter = nodemailer.createTransport({
+    host: config.SMTP_HOST,
+    port: config.SMTP_PORT,
+    secure: config.SMTP_SECURE,
+    auth: user && pass ? { user, pass } : undefined,
+  });
+
+  // Extract name from SMTP_FROM (e.g. "Collabix Onboarding <no-reply@soft7.in>" -> "Collabix Onboarding")
+  let fromName = "System";
+  if (config.SMTP_FROM.includes("<")) {
+    fromName = config.SMTP_FROM.split("<")[0].replace(/"/g, "").trim();
+  }
+  return { transporter, from: config.SMTP_FROM, fromName };
+}
+
+class SmtpEmailProvider implements EmailProvider {
   async sendInvitationEmail(
     email: string,
     invitationUrl: string,
   ): Promise<void> {
     try {
-      await this.transporter.sendMail({
-        from: config.SMTP_FROM,
+      const { transporter, from, fromName } = await getDynamicTransporter(email);
+      await transporter.sendMail({
+        from: from,
         to: email,
-        subject: "Join your team on Collabix",
+        subject: `Join your team on ${fromName}`,
         html: `
           <div style="font-family: sans-serif; padding: 20px; line-height: 1.6; color: #111;">
-            <h2>Collabix Soft7 Onboarding  to Collabix</h2>
+            <h2>${fromName} Onboarding</h2>
             <p>You have been invited to join the studio workspace.</p>
             <p>Please click the link below to set up your password and activate your account:</p>
             <p><a href="${invitationUrl}" style="background: #111; color: #fff; padding: 10px 16px; text-decoration: none; border-radius: 6px; display: inline-block;">Set Up Password</a></p>
@@ -103,7 +134,7 @@ class SmtpEmailProvider implements EmailProvider {
           </div>
         `,
       });
-      console.log(`✅  Invitation email sent via SMTP (no-reply@soft7.in) to ${email}`);
+      console.log(`✅  Invitation email sent via SMTP to ${email}`);
     } catch (error) {
       console.error("❌  Failed to send invitation email via SMTP:", error);
       throw error;
@@ -112,21 +143,22 @@ class SmtpEmailProvider implements EmailProvider {
 
   async sendPasswordResetEmail(email: string, resetUrl: string): Promise<void> {
     try {
-      await this.transporter.sendMail({
-        from: config.SMTP_FROM,
+      const { transporter, from, fromName } = await getDynamicTransporter(email);
+      await transporter.sendMail({
+        from: from,
         to: email,
-        subject: "Reset your Collabix password",
+        subject: `Reset your ${fromName} password`,
         html: `
           <div style="font-family: sans-serif; padding: 20px; line-height: 1.6; color: #111;">
             <h2>Reset your password</h2>
-            <p>You requested to reset your password for Collabix.</p>
+            <p>You requested to reset your password for ${fromName}.</p>
             <p>Please click the link below to configure your new password:</p>
             <p><a href="${resetUrl}" style="background: #111; color: #fff; padding: 10px 16px; text-decoration: none; border-radius: 6px; display: inline-block;">Reset Password</a></p>
             <p style="font-size: 12px; color: #666; margin-top: 30px;">If the button doesn't work, copy and paste this URL into your browser:<br>${resetUrl}</p>
           </div>
         `,
       });
-      console.log(`✅  Password reset email sent via SMTP (no-reply@soft7.in) to ${email}`);
+      console.log(`✅  Password reset email sent via SMTP to ${email}`);
     } catch (error) {
       console.error("❌  Failed to send password reset email via SMTP:", error);
       throw error;
@@ -141,12 +173,13 @@ class SmtpEmailProvider implements EmailProvider {
     status: string,
   ): Promise<void> {
     try {
+      const { transporter, from, fromName } = await getDynamicTransporter(email);
       const isApproved = status === "APPROVED";
       const statusLabel = isApproved ? "Approved" : "Rejected";
-      await this.leaveTransporter.sendMail({
-        from: config.SMTP_LEAVE_FROM,
+      await transporter.sendMail({
+        from: from,
         to: email,
-        subject: `Leave Application ${statusLabel} — SOFT7`,
+        subject: `Leave Application ${statusLabel} — ${fromName}`,
         html: `
           <div style="font-family: sans-serif; padding: 20px; line-height: 1.6; color: #111;">
             <h2 style="color: ${isApproved ? "#10b981" : "#ef4444"};">Leave Application Update</h2>
@@ -166,13 +199,13 @@ class SmtpEmailProvider implements EmailProvider {
               </tr>
             </table>
             <p>Thank you,</p>
-            <p><strong>SOFT7 Team</strong></p>
+            <p><strong>${fromName} Team</strong></p>
           </div>
         `,
       });
-      console.log(`✅  Leave status email sent via Leave SMTP (Soft7.in@gmail.com) to ${email}`);
+      console.log(`✅  Leave status email sent via SMTP to ${email}`);
     } catch (error) {
-      console.error("❌  Failed to send leave status email via Leave SMTP:", error);
+      console.error("❌  Failed to send leave status email via SMTP:", error);
       throw error;
     }
   }
