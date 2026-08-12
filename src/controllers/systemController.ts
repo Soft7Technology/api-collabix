@@ -234,4 +234,99 @@ export class SystemController {
       });
     }
   }
+
+  static async getWhatsAppSettings(req: Request, res: Response) {
+    const orgId = (req.user as any)?.organization_id || 'default';
+    try {
+      const row = await queryOne<any>(
+        "SELECT * FROM system_whatsapp_settings WHERE id = $1",
+        [orgId]
+      );
+      if (row) {
+        return res.json({
+          enabled: !!row.enabled,
+          phoneNumber: row.phone_number || "",
+          apiKey: row.api_key || "",
+        });
+      }
+    } catch (err) {
+      // Table doesn't exist or query failed, return defaults
+    }
+    return res.json({
+      enabled: false,
+      phoneNumber: "",
+      apiKey: "",
+    });
+  }
+
+  static async updateWhatsAppSettings(req: Request, res: Response) {
+    const orgId = (req.user as any)?.organization_id || 'default';
+    const { enabled, phoneNumber, apiKey } = req.body;
+
+    try {
+      await query(
+        `CREATE TABLE IF NOT EXISTS system_whatsapp_settings (
+          id VARCHAR PRIMARY KEY,
+          enabled BOOLEAN NOT NULL DEFAULT FALSE,
+          phone_number VARCHAR,
+          api_key VARCHAR,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );`,
+      );
+
+      await query(
+        `INSERT INTO system_whatsapp_settings (id, enabled, phone_number, api_key, updated_at)
+         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+         ON CONFLICT (id) DO UPDATE SET
+          enabled = EXCLUDED.enabled,
+          phone_number = EXCLUDED.phone_number,
+          api_key = EXCLUDED.api_key,
+          updated_at = CURRENT_TIMESTAMP`,
+        [orgId, !!enabled, phoneNumber || "", apiKey || ""],
+      );
+
+      return res.json({
+        message: "WhatsApp configuration saved successfully",
+        settings: {
+          enabled: !!enabled,
+          phoneNumber: phoneNumber || "",
+          apiKey: apiKey || "",
+        },
+      });
+    } catch (err: any) {
+      console.error("❌ Failed to update WhatsApp settings:", err);
+      return res.status(500).json({
+        error: {
+          message: `Failed to save WhatsApp settings: ${err.message || "Unknown error"}`,
+          status: 500,
+        },
+      });
+    }
+  }
+
+  static async deleteWhatsAppSettings(req: Request, res: Response) {
+    const orgId = (req.user as any)?.organization_id || 'default';
+    try {
+      await query(
+        "DELETE FROM system_whatsapp_settings WHERE id = $1",
+        [orgId]
+      );
+      return res.json({
+        message: "WhatsApp configuration reset to defaults successfully",
+        settings: {
+          enabled: false,
+          phoneNumber: "",
+          apiKey: "",
+        },
+      });
+    } catch (err: any) {
+      console.error("❌ Failed to delete WhatsApp settings:", err);
+      return res.status(500).json({
+        error: {
+          message: "Failed to reset WhatsApp settings.",
+          status: 500,
+        },
+      });
+    }
+  }
 }

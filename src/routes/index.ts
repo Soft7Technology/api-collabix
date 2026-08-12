@@ -25,6 +25,7 @@ import {
   updateOrganizationSchema,
   updateSmtpSchema,
   testSmtpSchema,
+  updateWhatsAppSchema,
 } from "../schemas/index.js";
 
 const router = Router();
@@ -142,6 +143,24 @@ router.post(
   SystemController.testSmtpConnection,
 );
 
+
+// System & WhatsApp Settings
+router.get(
+  "/system/whatsapp",
+  requirePermission("admin:manage"),
+  SystemController.getWhatsAppSettings,
+);
+router.patch(
+  "/system/whatsapp",
+  requirePermission("admin:manage"),
+  validate(updateWhatsAppSchema),
+  SystemController.updateWhatsAppSettings,
+);
+router.delete(
+  "/system/whatsapp",
+  requirePermission("admin:manage"),
+  SystemController.deleteWhatsAppSettings,
+);
 
 // Dashboard / Read-only resources
 router.get("/sprints", DashboardController.getSprints);
