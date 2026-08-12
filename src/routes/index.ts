@@ -179,6 +179,17 @@ router.post(
 );
 router.get("/upload/file/*", UploadController.streamFile);
 
+import { RepositoryController } from "../controllers/repositoryController.js";
+
+// Repository & Code Dashboard routes
+router.get("/repositories", RepositoryController.getAll);
+router.post("/repositories", RepositoryController.create);
+router.get("/repositories/:id/dashboard", RepositoryController.getDashboard);
+router.get("/repositories/:id/branches", RepositoryController.getBranches);
+router.get("/repositories/:id/commits", RepositoryController.getCommits);
+router.post("/repositories/commits", RepositoryController.recordCommit);
+router.get("/tasks/:taskId/development", RepositoryController.getTaskDevelopment);
+
 // Screen monitoring routes
 router.post(
   "/monitoring/upload",
