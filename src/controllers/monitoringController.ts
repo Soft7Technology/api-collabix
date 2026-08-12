@@ -38,7 +38,7 @@ export const upload = multer({
   }
 });
 
-import { uploadToR2 } from "../services/storageService.js";
+import { uploadToR2, deleteFromR2 } from "../services/storageService.js";
 
 export class MonitoringController {
   static async uploadScreenshot(req: Request, res: Response, next: NextFunction) {
@@ -132,6 +132,7 @@ export class MonitoringController {
            FROM screen_logs sl
            JOIN users u ON sl.user_id = u.id
            WHERE u.organization_id IS NOT DISTINCT FROM $1
+             AND sl.screenshot_path != 'SESSION_STOPPED'
            ORDER BY sl.captured_at DESC
            LIMIT 50;`,
           [orgId]
@@ -143,6 +144,7 @@ export class MonitoringController {
            FROM screen_logs sl
            JOIN users u ON sl.user_id = u.id
            WHERE sl.user_id = $1
+             AND sl.screenshot_path != 'SESSION_STOPPED'
            ORDER BY sl.captured_at DESC
            LIMIT 50;`,
           [userId]
@@ -222,10 +224,14 @@ export class MonitoringController {
       // Delete from database
       await db.query("DELETE FROM screen_logs WHERE id = $1;", [id]);
 
-      // Delete file from disk if it exists
-      const filePath = path.resolve(process.cwd(), log.screenshot_path.replace(/^\//, ""));
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+      // Delete file from Cloudflare R2 or local disk
+      if (log.screenshot_path.startsWith("http://") || log.screenshot_path.startsWith("https://")) {
+        await deleteFromR2(log.screenshot_path);
+      } else {
+        const filePath = path.resolve(process.cwd(), log.screenshot_path.replace(/^\//, ""));
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
       }
 
       res.status(200).json({ message: "Screenshot deleted successfully." });
