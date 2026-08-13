@@ -128,7 +128,7 @@ export class MonitoringController {
       // Admins and Managers can see all screenshots in their organization
       if (roleRank <= 2) {
         result = await db.query(
-          `SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, u.name as user_name, u.email as user_email
+          `SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, sl.duration_seconds, u.name as user_name, u.email as user_email
            FROM screen_logs sl
            JOIN users u ON sl.user_id = u.id
            WHERE u.organization_id IS NOT DISTINCT FROM $1
@@ -140,7 +140,7 @@ export class MonitoringController {
       } else {
         // Regular teammates can only retrieve their own logs
         result = await db.query(
-          `SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, u.name as user_name, u.email as user_email
+          `SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, sl.duration_seconds, u.name as user_name, u.email as user_email
            FROM screen_logs sl
            JOIN users u ON sl.user_id = u.id
            WHERE sl.user_id = $1
@@ -221,8 +221,9 @@ export class MonitoringController {
         return;
       }
 
-      // Delete from database
-      await db.query("DELETE FROM screen_logs WHERE id = $1;", [id]);
+      // Instead of hard-deleting the row (which alters logged worked time),
+      // we soft-delete by setting the screenshot_path to 'DELETED'
+      await db.query("UPDATE screen_logs SET screenshot_path = 'DELETED' WHERE id = $1;", [id]);
 
       // Delete file from Cloudflare R2 or local disk
       if (log.screenshot_path.startsWith("http://") || log.screenshot_path.startsWith("https://")) {
