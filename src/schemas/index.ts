@@ -180,3 +180,11 @@ export const testSmtpSchema = z.object({
   }),
 });
 
+export const updateWhatsAppSchema = z.object({
+  body: z.object({
+    enabled: z.boolean(),
+    phoneNumber: z.string().optional().default(""),
+    apiKey: z.string().optional().default(""),
+  }),
+});
+
