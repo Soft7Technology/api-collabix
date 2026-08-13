@@ -213,6 +213,12 @@ router.get("/repositories/:id/branches", RepositoryController.getBranches);
 router.get("/repositories/:id/commits", RepositoryController.getCommits);
 router.post("/repositories/commits", RepositoryController.recordCommit);
 router.get("/tasks/:taskId/development", RepositoryController.getTaskDevelopment);
+router.get("/repositories/:id/pull-requests", RepositoryController.getPullRequests);
+router.post("/repositories/:id/pull-requests", RepositoryController.createPullRequest);
+router.post("/repositories/:id/branches", RepositoryController.createBranch);
+router.get("/repositories/:id/activity", RepositoryController.getActivity);
+router.get("/repositories/:id/files", RepositoryController.getFiles);
+
 
 // Screen monitoring routes
 router.post(

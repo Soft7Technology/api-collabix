@@ -360,9 +360,9 @@ export class RepositoryController {
 
       res.json({
         taskId,
-        commitsCount: linkedCommits.length || (taskId === "t1" ? 3 : 0),
-        commits: linkedCommits.length > 0 ? linkedCommits : (taskId === "t1" ? mockCommits.slice(0, 2) : []),
-        openPR: linkedPRs[0] || (taskId === "t1" ? mockPRs[0] : null),
+        commitsCount: linkedCommits.length || (taskId === "t1" || taskId === "142" ? 3 : 0),
+        commits: linkedCommits.length > 0 ? linkedCommits : (taskId === "t1" || taskId === "142" ? mockCommits.slice(0, 2) : []),
+        openPR: linkedPRs[0] || (taskId === "t1" || taskId === "142" ? mockPRs[0] : null),
         isMerged: linkedPRs.some((p) => p.status === "merged") || taskId === "t1",
         deploymentStatus: latestDeployment?.status === "Passed" ? "Deployment Completed" : "In Progress",
       });
@@ -370,4 +370,109 @@ export class RepositoryController {
       next(error);
     }
   }
+
+  static async getPullRequests(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { status } = req.query;
+      let prs = mockPRs.filter((p) => p.repoId === id || id === "repo-1");
+      if (status && status !== "all") {
+        prs = prs.filter((p) => p.status === status);
+      }
+      res.json(prs);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async createPullRequest(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { title, sourceBranch, targetBranch, taskId, description } = req.body;
+      const newPR: PullRequestItem = {
+        id: `pr-${Date.now()}`,
+        repoId: id || "repo-1",
+        prNumber: mockPRs.length + 25,
+        title: title || "New Pull Request",
+        status: "open",
+        author: "Suhani",
+        taskId: taskId || null,
+        createdAt: new Date().toISOString(),
+      };
+      mockPRs.unshift(newPR);
+      res.status(201).json(newPR);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async createBranch(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { name, targetBranch } = req.body;
+      const branchObj = { name: name || "new-branch", isDefault: false, aheadBehind: "1 ahead" };
+      if (!mockBranches[id]) {
+        mockBranches[id] = [{ name: "main", isDefault: true, aheadBehind: "0 / 0" }];
+      }
+      mockBranches[id].push(branchObj);
+      res.status(201).json(branchObj);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getActivity(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      res.json([
+        {
+          id: "act-1",
+          repoId: id,
+          type: "push",
+          actorName: "Suhani Sharma",
+          description: "Pushed 3 commits to feature/login",
+          targetBranch: "feature/login",
+          commitCount: 3,
+          commitMessage: '"Fix login validation"',
+          timestamp: "2 hours ago",
+        },
+        {
+          id: "act-2",
+          repoId: id,
+          type: "create_pr",
+          actorName: "Rahul Sharma",
+          description: "Created pull request #24",
+          prNumber: 24,
+          prTitle: '"Update dashboard UI"',
+          timestamp: "4 hours ago",
+        },
+        {
+          id: "act-3",
+          repoId: id,
+          type: "merge_pr",
+          actorName: "Aman",
+          description: "Merged pull request #21",
+          prNumber: 21,
+          prTitle: '"Fix authentication issue"',
+          timestamp: "Yesterday",
+        },
+      ]);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getFiles(req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json([
+        { name: "src", type: "folder", path: "src", lastCommitMessage: "Fix login validation", updatedAt: "2 hours ago" },
+        { name: "components", type: "folder", path: "components", lastCommitMessage: "Update dashboard UI", updatedAt: "5 hours ago" },
+        { name: "package.json", type: "file", path: "package.json", lastCommitMessage: "Update dependencies", updatedAt: "1 day ago", size: "2.4 KB" },
+        { name: "README.md", type: "file", path: "README.md", lastCommitMessage: "Update documentation", updatedAt: "2 days ago", size: "3.8 KB" },
+      ]);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
+
