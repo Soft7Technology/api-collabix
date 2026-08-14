@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { db } from "../db/index.js";
+import { db } from "../../db/index.js";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
@@ -38,7 +38,7 @@ export const upload = multer({
   }
 });
 
-import { uploadToR2, deleteFromR2 } from "../services/storageService.js";
+import { uploadToR2, deleteFromR2 } from "../../services/storageService.js";
 
 export class MonitoringController {
   static async uploadScreenshot(req: Request, res: Response, next: NextFunction) {

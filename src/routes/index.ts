@@ -1,15 +1,15 @@
 import { Router } from "express";
-import { ProjectController } from "../controllers/projectController.js";
-import { MonitoringController, upload } from "../controllers/monitoringController.js";
-import { TaskController } from "../controllers/taskController.js";
-import { MemberController } from "../controllers/memberController.js";
-import { DashboardController } from "../controllers/dashboardController.js";
-import { DiscussionController } from "../controllers/discussionController.js";
+import { ProjectController } from "../modules/projects/projectController.js";
+import { MonitoringController, upload } from "../modules/monitoring/monitoringController.js";
+import { TaskController } from "../modules/tasks/taskController.js";
+import { MemberController } from "../modules/team/memberController.js";
+import { DashboardController } from "../modules/dashboard/dashboardController.js";
+import { DiscussionController } from "../modules/discussion/discussionController.js";
 import { router as superRouter } from "./super.js";
 import { validate } from "../middleware/validate.js";
 import { requirePermission } from "../middleware/requirePermission.js";
-import { AuthController } from "../controllers/authController.js";
-import { SystemController } from "../controllers/systemController.js";
+import { AuthController } from "../modules/auth/authController.js";
+import { SystemController } from "../modules/system/systemController.js";
 import {
   createProjectSchema,
   updateProjectSchema,
@@ -193,7 +193,7 @@ router.delete("/leaves/:id", DashboardController.deleteLeave);
 
 router.get("/activity", DashboardController.getActivity);
 
-import { UploadController, attachmentMulter } from "../controllers/uploadController.js";
+import { UploadController, attachmentMulter } from "../modules/system/uploadController.js";
 
 // Attachment Upload & Streaming Routes (Cloudflare R2 Proxy)
 router.post(
@@ -203,7 +203,7 @@ router.post(
 );
 router.get("/upload/file/*", UploadController.streamFile);
 
-import { RepositoryController } from "../controllers/repositoryController.js";
+import { RepositoryController } from "../modules/repository/repositoryController.js";
 
 // Repository & Code Dashboard routes
 router.get("/repositories", RepositoryController.getAll);

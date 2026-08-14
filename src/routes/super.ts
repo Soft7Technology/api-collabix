@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { SuperController } from "../controllers/superController.js";
+import { SuperController } from "../modules/system/superController.js";
 
 const router = Router();
 

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
-import { SuperService } from "../services/superService.js";
-import { AuthController } from "./authController.js";
+import { SuperService } from "../../services/superService.js";
+import { AuthController } from "../auth/authController.js";
 
 export class SuperController {
   /**
