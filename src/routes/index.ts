@@ -210,6 +210,9 @@ router.post(
   MonitoringController.uploadScreenshot,
 );
 router.post("/monitoring/stop", MonitoringController.stopMonitoring);
+router.post("/monitoring/session/start", MonitoringController.startSession);
+router.post("/monitoring/session/stop", MonitoringController.stopSession);
+router.post("/monitoring/session/heartbeat", MonitoringController.heartbeatSession);
 router.get("/monitoring/screenshots", MonitoringController.getScreenshots);
 router.delete("/monitoring/screenshots/:id", MonitoringController.deleteScreenshot);
 

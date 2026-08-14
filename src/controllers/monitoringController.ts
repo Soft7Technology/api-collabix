@@ -191,6 +191,37 @@ export class MonitoringController {
     }
   }
 
+  static async startSession(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { device_uuid, timestamp } = req.body;
+      const session_id = `mock-session-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+      console.log(`[API Mock] Start Session: Device ${device_uuid} | Session ID: ${session_id}`);
+      res.status(200).json({ success: true, session_id });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async stopSession(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { session_id, device_uuid } = req.body;
+      console.log(`[API Mock] Stop Session: Session ${session_id} on Device ${device_uuid}`);
+      res.status(200).json({ success: true, message: "Session stopped successfully." });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async heartbeatSession(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { device_id, session_id, agent_version, timestamp, monitoring_status } = req.body;
+      console.log(`[API Mock] Heartbeat: Device ${device_id} | Session ${session_id} | Status: ${monitoring_status} | Version: ${agent_version}`);
+      res.status(200).json({ success: true, message: "Heartbeat acknowledged." });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async deleteScreenshot(req: Request, res: Response, next: NextFunction) {
     try {
       if (!req.user) {
