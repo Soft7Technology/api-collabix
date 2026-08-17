@@ -128,7 +128,7 @@ export class MonitoringController {
       // Admins and Managers can see all screenshots in their organization
       if (roleRank <= 2) {
         result = await db.query(
-          `SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, u.name as user_name, u.email as user_email
+          `SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, sl.duration_seconds, u.name as user_name, u.email as user_email
            FROM screen_logs sl
            JOIN users u ON sl.user_id = u.id
            WHERE u.organization_id IS NOT DISTINCT FROM $1
@@ -140,7 +140,7 @@ export class MonitoringController {
       } else {
         // Regular teammates can only retrieve their own logs
         result = await db.query(
-          `SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, u.name as user_name, u.email as user_email
+          `SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, sl.duration_seconds, u.name as user_name, u.email as user_email
            FROM screen_logs sl
            JOIN users u ON sl.user_id = u.id
            WHERE sl.user_id = $1
@@ -191,6 +191,37 @@ export class MonitoringController {
     }
   }
 
+  static async startSession(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { device_uuid, timestamp } = req.body;
+      const session_id = `mock-session-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+      console.log(`[API Mock] Start Session: Device ${device_uuid} | Session ID: ${session_id}`);
+      res.status(200).json({ success: true, session_id });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async stopSession(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { session_id, device_uuid } = req.body;
+      console.log(`[API Mock] Stop Session: Session ${session_id} on Device ${device_uuid}`);
+      res.status(200).json({ success: true, message: "Session stopped successfully." });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async heartbeatSession(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { device_id, session_id, agent_version, timestamp, monitoring_status } = req.body;
+      console.log(`[API Mock] Heartbeat: Device ${device_id} | Session ${session_id} | Status: ${monitoring_status} | Version: ${agent_version}`);
+      res.status(200).json({ success: true, message: "Heartbeat acknowledged." });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async deleteScreenshot(req: Request, res: Response, next: NextFunction) {
     try {
       if (!req.user) {
@@ -221,8 +252,9 @@ export class MonitoringController {
         return;
       }
 
-      // Delete from database
-      await db.query("DELETE FROM screen_logs WHERE id = $1;", [id]);
+      // Instead of hard-deleting the row (which alters logged worked time),
+      // we soft-delete by setting the screenshot_path to 'DELETED'
+      await db.query("UPDATE screen_logs SET screenshot_path = 'DELETED' WHERE id = $1;", [id]);
 
       // Delete file from Cloudflare R2 or local disk
       if (log.screenshot_path.startsWith("http://") || log.screenshot_path.startsWith("https://")) {
