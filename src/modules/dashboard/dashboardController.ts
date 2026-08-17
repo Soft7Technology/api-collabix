@@ -1,10 +1,10 @@
 import { Request, Response, NextFunction } from "express";
-import { DashboardService } from "../services/dashboardService.js";
-import { LeaveService } from "../services/leaveService.js";
-import { MeetingService } from "../services/meetingService.js";
-import { SprintService } from "../services/sprintService.js";
-import { MemberService } from "../services/memberService.js";
-import { emailService } from "../services/emailService.js";
+import { DashboardService } from "../../services/dashboardService.js";
+import { LeaveService } from "../../services/leaveService.js";
+import { MeetingService } from "../../services/meetingService.js";
+import { SprintService } from "../../services/sprintService.js";
+import { MemberService } from "../../services/memberService.js";
+import { emailService } from "../../services/emailService.js";
 
 export class DashboardController {
   static async getSprints(req: Request, res: Response, next: NextFunction) {

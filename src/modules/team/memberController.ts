@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
-import { MemberService } from "../services/memberService.js";
-import { DashboardService } from "../services/dashboardService.js";
+import { MemberService } from "../../services/memberService.js";
+import { DashboardService } from "../../services/dashboardService.js";
 
 export class MemberController {
   static async getAll(req: Request, res: Response, next: NextFunction) {

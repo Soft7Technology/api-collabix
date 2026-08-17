@@ -1,11 +1,10 @@
 import { Request, Response, NextFunction } from "express";
-import { TaskService } from "../services/taskService.js";
-import { DashboardService } from "../services/dashboardService.js";
+import { ProjectService } from "../../services/projectService.js";
+import { DashboardService } from "../../services/dashboardService.js";
 
-export class TaskController {
+export class ProjectController {
   static async getAll(req: Request, res: Response, next: NextFunction) {
     try {
-      const { projectId } = req.query;
       const userCtx = req.user
         ? {
             id: req.user.id,
@@ -16,8 +15,8 @@ export class TaskController {
             isSuperAdmin: req.user.is_super_admin || false,
           }
         : undefined;
-      const tasks = await TaskService.getAll(projectId as string, userCtx);
-      res.json(tasks);
+      const projects = await ProjectService.getAll(userCtx);
+      res.json(projects);
     } catch (error) {
       next(error);
     }
@@ -36,14 +35,14 @@ export class TaskController {
             isSuperAdmin: req.user.is_super_admin || false,
           }
         : undefined;
-      const task = await TaskService.getById(id, userCtx);
-      if (!task) {
+      const project = await ProjectService.getById(id, userCtx);
+      if (!project) {
         res
           .status(404)
-          .json({ error: { message: "Task not found", status: 404 } });
+          .json({ error: { message: "Project not found", status: 404 } });
         return;
       }
-      res.json(task);
+      res.json(project);
     } catch (error) {
       next(error);
     }
@@ -51,35 +50,36 @@ export class TaskController {
 
   static async create(req: Request, res: Response, next: NextFunction) {
     try {
-      const allowedRoles = ["Admin", "Manager", "Team leader"];
-      const isSuperAdmin = req.user?.is_super_admin;
-      const userRole = req.user?.role_name;
-      const canCreateTasks = req.user?.can_create_tasks;
-
-      if (!isSuperAdmin && (!userRole || !allowedRoles.includes(userRole)) && !canCreateTasks) {
-        res.status(403).json({
-          error: {
-            message: "Forbidden: You do not have permission to create tasks.",
-            status: 403,
-          },
-        });
+      if (
+        req.user &&
+        req.user.role_rank !== undefined &&
+        req.user.role_rank > 3
+      ) {
+        res
+          .status(403)
+          .json({
+            error: {
+              message: "Forbidden: Teammates cannot create projects.",
+              status: 403,
+            },
+          });
         return;
       }
-      const task = await TaskService.create(
+      const project = await ProjectService.create(
         req.body,
         req.user?.organization_id || null,
       );
-      if (req.user && task) {
+      if (req.user && project) {
         await DashboardService.logActivity(
           req.user.id,
-          "created task",
-          task.title,
-          task.projectId,
+          "created project",
+          project.name,
+          project.id,
         );
       }
-      res.status(201).json(task);
-    } catch (error: any) {
-      res.status(400).json({ error: { message: error.message, status: 400 } });
+      res.status(201).json(project);
+    } catch (error) {
+      next(error);
     }
   }
 
@@ -97,30 +97,30 @@ export class TaskController {
           }
         : undefined;
 
-      const existingTask = await TaskService.getById(id, userCtx);
-      if (!existingTask) {
+      const existingProject = await ProjectService.getById(id, userCtx);
+      if (!existingProject) {
         res
           .status(404)
-          .json({ error: { message: "Task not found", status: 404 } });
+          .json({ error: { message: "Project not found", status: 404 } });
         return;
       }
 
-      const task = await TaskService.update(id, req.body);
-      if (req.user && task) {
-        const action =
-          req.body.status && req.body.status !== existingTask.status
-            ? `moved task to ${req.body.status.replace("_", " ")}`
-            : "updated task";
+      const project = await ProjectService.update(
+        id,
+        req.body,
+        req.user?.organization_id || null,
+      );
+      if (req.user && project) {
         await DashboardService.logActivity(
           req.user.id,
-          action,
-          task.title,
-          task.projectId,
+          "updated project",
+          project.name,
+          project.id,
         );
       }
-      res.json(task);
-    } catch (error: any) {
-      res.status(400).json({ error: { message: error.message, status: 400 } });
+      res.json(project);
+    } catch (error) {
+      next(error);
     }
   }
 
@@ -138,26 +138,29 @@ export class TaskController {
           }
         : undefined;
 
-      const existingTask = await TaskService.getById(id, userCtx);
-      if (!existingTask) {
+      const existingProject = await ProjectService.getById(id, userCtx);
+      if (!existingProject) {
         res
           .status(404)
-          .json({ error: { message: "Task not found", status: 404 } });
+          .json({ error: { message: "Project not found", status: 404 } });
         return;
       }
 
-      const task = await TaskService.delete(id);
-      if (req.user && existingTask) {
+      const deletedProject = await ProjectService.delete(
+        id,
+        req.user?.organization_id || null,
+      );
+      if (req.user && existingProject) {
         await DashboardService.logActivity(
           req.user.id,
-          "deleted task",
-          existingTask.title,
-          existingTask.projectId,
+          "deleted project",
+          existingProject.name,
+          existingProject.id,
         );
       }
-      res.json(task);
-    } catch (error: any) {
-      res.status(400).json({ error: { message: error.message, status: 400 } });
+      res.status(200).json(deletedProject);
+    } catch (error) {
+      next(error);
     }
   }
 }
