@@ -1,5 +1,5 @@
-import { pool } from "./db/index.js";
-import { hashPassword } from "./utils/auth.js";
+import { pool } from "../index.js";
+import { hashPassword } from "../../utils/auth.js";
 
 async function seedSuperAdmin() {
   const email = process.env.SUPER_ADMIN_EMAIL;
