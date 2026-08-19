@@ -69,6 +69,23 @@ export async function runMigrations() {
     await client.query(`
       ALTER TABLE screen_logs ADD COLUMN IF NOT EXISTS duration_seconds INT DEFAULT 0;
       ALTER TABLE projects ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id) ON DELETE SET NULL;
+      
+      CREATE TABLE IF NOT EXISTS monitoring_sessions (
+        id VARCHAR PRIMARY KEY,
+        user_id VARCHAR REFERENCES users(id) ON DELETE CASCADE,
+        device_uuid VARCHAR(256) NOT NULL,
+        started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        stopped_at TIMESTAMP WITH TIME ZONE
+      );
+
+      CREATE TABLE IF NOT EXISTS monitoring_heartbeats (
+        id SERIAL PRIMARY KEY,
+        session_id VARCHAR REFERENCES monitoring_sessions(id) ON DELETE CASCADE,
+        active_app VARCHAR(256),
+        active_domain VARCHAR(256),
+        window_title VARCHAR(512),
+        captured_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
     console.log("✨ All migrations are up to date.");
