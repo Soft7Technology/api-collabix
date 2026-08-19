@@ -86,8 +86,8 @@ export class MonitoringController {
         const prev = prevLogRes.rows[0];
         if (prev.status === "active" || prev.status === "inactive") {
           const elapsed = Date.now() - new Date(prev.captured_at).getTime();
-          if (elapsed > 0 && elapsed <= 15 * 60 * 1000) {
-            durationSeconds = Math.min(600, Math.floor(elapsed / 1000));
+          if (elapsed > 0 && elapsed <= 10 * 60 * 1000) {
+            durationSeconds = Math.min(300, Math.floor(elapsed / 1000));
           }
         }
       }
@@ -173,8 +173,8 @@ export class MonitoringController {
         const prev = prevLogRes.rows[0];
         if (prev.status === "active" || prev.status === "inactive") {
           const elapsed = Date.now() - new Date(prev.captured_at).getTime();
-          if (elapsed > 0 && elapsed <= 15 * 60 * 1000) {
-            durationSeconds = Math.min(600, Math.floor(elapsed / 1000));
+          if (elapsed > 0 && elapsed <= 10 * 60 * 1000) {
+            durationSeconds = Math.min(300, Math.floor(elapsed / 1000));
           }
         }
       }
@@ -296,6 +296,88 @@ export class MonitoringController {
       }
 
       res.status(200).json({ message: "Screenshot deleted successfully." });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async startLunch(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "Unauthorized", status: 401 } });
+        return;
+      }
+      const userId = req.user.id;
+
+      // 1. Calculate exact duration since previous capture to cleanly stop working log
+      const prevLogRes = await db.query(
+        `SELECT captured_at, status FROM screen_logs WHERE user_id = $1 ORDER BY captured_at DESC LIMIT 1;`,
+        [userId]
+      );
+      let durationSeconds = 0;
+      if (prevLogRes.rows.length > 0) {
+        const prev = prevLogRes.rows[0];
+        if (prev.status === "active" || prev.status === "inactive") {
+          const elapsed = Date.now() - new Date(prev.captured_at).getTime();
+          if (elapsed > 0 && elapsed <= 10 * 60 * 1000) {
+            durationSeconds = Math.min(300, Math.floor(elapsed / 1000));
+          }
+        }
+      }
+
+      // Stop any existing session
+      await db.query(
+        `INSERT INTO screen_logs (user_id, screenshot_path, status, duration_seconds)
+         VALUES ($1, 'SESSION_STOPPED', 'stopped', $2);`,
+        [userId, durationSeconds]
+      );
+
+      // Start lunch break
+      await db.query(
+        `INSERT INTO screen_logs (user_id, screenshot_path, status, duration_seconds)
+         VALUES ($1, 'LUNCH_START', 'lunch', 0);`,
+        [userId]
+      );
+
+      res.status(200).json({ success: true, message: "Lunch break started." });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async stopLunch(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "Unauthorized", status: 401 } });
+        return;
+      }
+      const userId = req.user.id;
+
+      // Find the last LUNCH_START entry
+      const lastLunchStartRes = await db.query(
+        `SELECT captured_at FROM screen_logs 
+         WHERE user_id = $1 AND screenshot_path = 'LUNCH_START' AND status = 'lunch'
+         ORDER BY captured_at DESC LIMIT 1;`,
+         [userId]
+      );
+
+      let durationSeconds = 0;
+      if (lastLunchStartRes.rows.length > 0) {
+        const lastStart = lastLunchStartRes.rows[0];
+        const elapsed = Date.now() - new Date(lastStart.captured_at).getTime();
+        if (elapsed > 0) {
+          durationSeconds = Math.floor(elapsed / 1000);
+        }
+      }
+
+      // Insert LUNCH_STOP entry with calculated duration
+      await db.query(
+        `INSERT INTO screen_logs (user_id, screenshot_path, status, duration_seconds)
+         VALUES ($1, 'LUNCH_STOP', 'lunch', $2);`,
+        [userId, durationSeconds]
+      );
+
+      res.status(200).json({ success: true, message: "Lunch break stopped.", durationSeconds });
     } catch (error) {
       next(error);
     }
