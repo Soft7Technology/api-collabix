@@ -193,9 +193,19 @@ export class MonitoringController {
 
   static async startSession(req: Request, res: Response, next: NextFunction) {
     try {
-      const { device_uuid, timestamp } = req.body;
-      const session_id = `mock-session-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
-      console.log(`[API Mock] Start Session: Device ${device_uuid} | Session ID: ${session_id}`);
+      if (!req.user) {
+        res.status(401).json({ error: { message: "Unauthorized", status: 401 } });
+        return;
+      }
+      const { device_uuid } = req.body;
+      const session_id = `sess-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+      
+      await db.query(
+        "INSERT INTO monitoring_sessions (id, user_id, device_uuid) VALUES ($1, $2, $3);",
+        [session_id, req.user.id, device_uuid || "unknown"]
+      );
+      
+      console.log(`[API Session] Started session ${session_id} for user ${req.user.id} on device ${device_uuid}`);
       res.status(200).json({ success: true, session_id });
     } catch (error) {
       next(error);
@@ -204,8 +214,18 @@ export class MonitoringController {
 
   static async stopSession(req: Request, res: Response, next: NextFunction) {
     try {
-      const { session_id, device_uuid } = req.body;
-      console.log(`[API Mock] Stop Session: Session ${session_id} on Device ${device_uuid}`);
+      if (!req.user) {
+        res.status(401).json({ error: { message: "Unauthorized", status: 401 } });
+        return;
+      }
+      const { session_id } = req.body;
+      
+      await db.query(
+        "UPDATE monitoring_sessions SET stopped_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2;",
+        [session_id, req.user.id]
+      );
+      
+      console.log(`[API Session] Stopped session ${session_id} for user ${req.user.id}`);
       res.status(200).json({ success: true, message: "Session stopped successfully." });
     } catch (error) {
       next(error);
@@ -214,8 +234,17 @@ export class MonitoringController {
 
   static async heartbeatSession(req: Request, res: Response, next: NextFunction) {
     try {
-      const { device_id, session_id, agent_version, timestamp, monitoring_status } = req.body;
-      console.log(`[API Mock] Heartbeat: Device ${device_id} | Session ${session_id} | Status: ${monitoring_status} | Version: ${agent_version}`);
+      if (!req.user) {
+        res.status(401).json({ error: { message: "Unauthorized", status: 401 } });
+        return;
+      }
+      const { session_id, active_app, active_domain, window_title } = req.body;
+      
+      await db.query(
+        "INSERT INTO monitoring_heartbeats (session_id, active_app, active_domain, window_title) VALUES ($1, $2, $3, $4);",
+        [session_id, active_app || null, active_domain || null, window_title || null]
+      );
+      
       res.status(200).json({ success: true, message: "Heartbeat acknowledged." });
     } catch (error) {
       next(error);
