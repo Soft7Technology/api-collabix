@@ -29,8 +29,6 @@ export async function runMigrations() {
         name VARCHAR UNIQUE NOT NULL,
         executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
-      ALTER TABLE screen_logs ADD COLUMN IF NOT EXISTS duration_seconds INT DEFAULT 0;
-      ALTER TABLE projects ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id) ON DELETE SET NULL;
     `);
 
     // 2. Fetch already executed migrations
@@ -66,11 +64,70 @@ export async function runMigrations() {
         }
       }
     }
+
+    // 6. Run post-migration alters once all tables are guaranteed to exist
+    await client.query(`
+      ALTER TABLE screen_logs ADD COLUMN IF NOT EXISTS duration_seconds INT DEFAULT 0;
+      ALTER TABLE projects ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id) ON DELETE SET NULL;
+      
+      CREATE TABLE IF NOT EXISTS monitoring_sessions (
+        id VARCHAR PRIMARY KEY,
+        user_id VARCHAR REFERENCES users(id) ON DELETE CASCADE,
+        device_uuid VARCHAR(256) NOT NULL,
+        started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        stopped_at TIMESTAMP WITH TIME ZONE
+      );
+
+      CREATE TABLE IF NOT EXISTS monitoring_heartbeats (
+        id SERIAL PRIMARY KEY,
+        session_id VARCHAR REFERENCES monitoring_sessions(id) ON DELETE CASCADE,
+        active_app VARCHAR(256),
+        active_domain VARCHAR(256),
+        window_title VARCHAR(512),
+        captured_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     console.log("✨ All migrations are up to date.");
   } catch (error) {
     console.error("❌ Migration runner failed:", error);
     throw error;
   } finally {
     client.release();
+  }
+}
+
+/**
+ * Executes a query and returns all matching rows.
+ */
+export async function query<T = any>(
+  text: string,
+  params?: any[],
+): Promise<T[]> {
+  const res = await pool.query(text, params);
+  return res.rows as T[];
+}
+
+/**
+ * Executes a query and returns the first row, or null if no rows matched.
+ */
+export async function queryOne<T = any>(
+  text: string,
+  params?: any[],
+): Promise<T | null> {
+  const rows = await query<T>(text, params);
+  return rows[0] ?? null;
+}
+
+/**
+ * Tests the database connection. Returns true if healthy, false otherwise.
+ */
+export async function health(): Promise<boolean> {
+  try {
+    await pool.query("SELECT 1;");
+    return true;
+  } catch (error) {
+    console.error("❌ Database health check failed:", error);
+    return false;
   }
 }

@@ -9,7 +9,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "clean": "rimraf dist",
-    "seed-admin": "tsx src/seed-super-admin.ts",
+    "seed-admin": "tsx src/db/scripts/seed-super-admin.ts",
     "lint": "eslint src"
   },
   "dependencies": {

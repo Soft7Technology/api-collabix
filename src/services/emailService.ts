@@ -1,6 +1,6 @@
 import { config } from "../config/index.js";
 import nodemailer from "nodemailer";
-import { queryOne } from "../db.js";
+import { queryOne } from "../db/index.js";
 
 export interface EmailProvider {
   sendInvitationEmail(email: string, invitationUrl: string): Promise<void>;

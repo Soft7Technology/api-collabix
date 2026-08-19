@@ -128,7 +128,7 @@ export class MonitoringController {
       // Admins and Managers can see all screenshots in their organization
       if (roleRank <= 2) {
         result = await db.query(
-          `SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, u.name as user_name, u.email as user_email
+          `SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, sl.duration_seconds, u.name as user_name, u.email as user_email
            FROM screen_logs sl
            JOIN users u ON sl.user_id = u.id
            WHERE u.organization_id IS NOT DISTINCT FROM $1
@@ -140,7 +140,7 @@ export class MonitoringController {
       } else {
         // Regular teammates can only retrieve their own logs
         result = await db.query(
-          `SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, u.name as user_name, u.email as user_email
+          `SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, sl.duration_seconds, u.name as user_name, u.email as user_email
            FROM screen_logs sl
            JOIN users u ON sl.user_id = u.id
            WHERE sl.user_id = $1
@@ -191,6 +191,66 @@ export class MonitoringController {
     }
   }
 
+  static async startSession(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "Unauthorized", status: 401 } });
+        return;
+      }
+      const { device_uuid } = req.body;
+      const session_id = `sess-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+      
+      await db.query(
+        "INSERT INTO monitoring_sessions (id, user_id, device_uuid) VALUES ($1, $2, $3);",
+        [session_id, req.user.id, device_uuid || "unknown"]
+      );
+      
+      console.log(`[API Session] Started session ${session_id} for user ${req.user.id} on device ${device_uuid}`);
+      res.status(200).json({ success: true, session_id });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async stopSession(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "Unauthorized", status: 401 } });
+        return;
+      }
+      const { session_id } = req.body;
+      
+      await db.query(
+        "UPDATE monitoring_sessions SET stopped_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2;",
+        [session_id, req.user.id]
+      );
+      
+      console.log(`[API Session] Stopped session ${session_id} for user ${req.user.id}`);
+      res.status(200).json({ success: true, message: "Session stopped successfully." });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async heartbeatSession(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "Unauthorized", status: 401 } });
+        return;
+      }
+      const { session_id, active_app, active_domain, window_title } = req.body;
+      
+      await db.query(
+        "INSERT INTO monitoring_heartbeats (session_id, active_app, active_domain, window_title) VALUES ($1, $2, $3, $4);",
+        [session_id, active_app || null, active_domain || null, window_title || null]
+      );
+      
+      res.status(200).json({ success: true, message: "Heartbeat acknowledged." });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async deleteScreenshot(req: Request, res: Response, next: NextFunction) {
     try {
       if (!req.user) {
@@ -221,8 +281,9 @@ export class MonitoringController {
         return;
       }
 
-      // Delete from database
-      await db.query("DELETE FROM screen_logs WHERE id = $1;", [id]);
+      // Instead of hard-deleting the row (which alters logged worked time),
+      // we soft-delete by setting the screenshot_path to 'DELETED'
+      await db.query("UPDATE screen_logs SET screenshot_path = 'DELETED' WHERE id = $1;", [id]);
 
       // Delete file from Cloudflare R2 or local disk
       if (log.screenshot_path.startsWith("http://") || log.screenshot_path.startsWith("https://")) {

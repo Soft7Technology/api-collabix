@@ -29,6 +29,15 @@ CREATE TABLE IF NOT EXISTS project_members (
   PRIMARY KEY (project_id, member_id)
 );
 
+-- Sprints
+CREATE TABLE IF NOT EXISTS sprints (
+  id VARCHAR PRIMARY KEY,
+  project_id VARCHAR REFERENCES projects(id) ON DELETE CASCADE,
+  name VARCHAR NOT NULL,
+  start_date VARCHAR NOT NULL,
+  end_date VARCHAR NOT NULL
+);
+
 -- Tasks
 CREATE TABLE IF NOT EXISTS tasks (
   id VARCHAR PRIMARY KEY,
@@ -51,15 +60,6 @@ CREATE TABLE IF NOT EXISTS activity_items (
   action VARCHAR NOT NULL,
   target VARCHAR NOT NULL,
   timestamp VARCHAR NOT NULL
-);
-
--- Sprints
-CREATE TABLE IF NOT EXISTS sprints (
-  id VARCHAR PRIMARY KEY,
-  project_id VARCHAR REFERENCES projects(id) ON DELETE CASCADE,
-  name VARCHAR NOT NULL,
-  start_date VARCHAR NOT NULL,
-  end_date VARCHAR NOT NULL
 );
 
 -- Meetings

@@ -29,10 +29,6 @@ start:
 seed:
 	npm run seed-admin
 
-# Reset database tables and seed
-reset-db:
-	npx tsx src/reset-db.ts
-
 # Lint backend code
 lint:
 	npm run lint
