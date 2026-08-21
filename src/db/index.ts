@@ -69,7 +69,7 @@ export async function runMigrations() {
     await client.query(`
       ALTER TABLE screen_logs ADD COLUMN IF NOT EXISTS duration_seconds INT DEFAULT 0;
       ALTER TABLE projects ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id) ON DELETE SET NULL;
-      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS screenshot_interval INT DEFAULT 600;
+      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS screenshot_interval INT DEFAULT 300;
       ALTER TABLE organizations ADD COLUMN IF NOT EXISTS screenshots_blurred BOOLEAN DEFAULT false;
       
       CREATE TABLE IF NOT EXISTS monitoring_sessions (

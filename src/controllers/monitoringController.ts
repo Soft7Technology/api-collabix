@@ -206,7 +206,7 @@ export class MonitoringController {
       );
       
       // Fetch organization-level settings for screen monitoring rules (Phase 21 Admin Controls)
-      let screenshotInterval = 600; // default: 10 minutes (in seconds)
+      let screenshotInterval = 300; // default: 5 minutes (in seconds)
       let screenshotsBlurred = false; // default: no blur
 
       if (req.user.organization_id) {
@@ -215,7 +215,7 @@ export class MonitoringController {
           [req.user.organization_id]
         );
         if (rows.length > 0) {
-          screenshotInterval = rows[0].screenshot_interval ?? 600;
+          screenshotInterval = rows[0].screenshot_interval ?? 300;
           screenshotsBlurred = !!rows[0].screenshots_blurred;
         }
       }
