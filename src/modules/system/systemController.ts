@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
-import { query, queryOne } from "../../db.js";
+import { query, queryOne } from "../db/index.js";
 import nodemailer from "nodemailer";
-import { config } from "../../config/index.js";
+import { config } from "../config/index.js";
 
 export interface SmtpSettings {
   provider: string;
