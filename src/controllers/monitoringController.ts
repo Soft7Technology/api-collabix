@@ -205,8 +205,30 @@ export class MonitoringController {
         [session_id, req.user.id, device_uuid || "unknown"]
       );
       
-      console.log(`[API Session] Started session ${session_id} for user ${req.user.id} on device ${device_uuid}`);
-      res.status(200).json({ success: true, session_id });
+      // Fetch organization-level settings for screen monitoring rules (Phase 21 Admin Controls)
+      let screenshotInterval = 600; // default: 10 minutes (in seconds)
+      let screenshotsBlurred = false; // default: no blur
+
+      if (req.user.organization_id) {
+        const { rows } = await db.query(
+          "SELECT screenshot_interval, screenshots_blurred FROM organizations WHERE id = $1;",
+          [req.user.organization_id]
+        );
+        if (rows.length > 0) {
+          screenshotInterval = rows[0].screenshot_interval ?? 600;
+          screenshotsBlurred = !!rows[0].screenshots_blurred;
+        }
+      }
+
+      console.log(`[API Session] Started session ${session_id} for user ${req.user.id}. Rules: Interval=${screenshotInterval}s, Blurred=${screenshotsBlurred}`);
+      res.status(200).json({ 
+        success: true, 
+        session_id,
+        settings: {
+          screenshotInterval,
+          screenshotsBlurred
+        }
+      });
     } catch (error) {
       next(error);
     }
