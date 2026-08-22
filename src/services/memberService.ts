@@ -28,7 +28,7 @@ export class MemberService {
       return [];
     }
     const interval = "15 minutes";
-    const tickInterval = 600; // 10 minutes per screenshot capture
+    const tickInterval = 300; // 5 minutes per screenshot capture
 
     let queryStr = `
       SELECT u.*, d.name as department_name, sys_role.name as system_role_name, sys_role.rank as system_role_rank,

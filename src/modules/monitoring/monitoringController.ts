@@ -75,6 +75,7 @@ export class MonitoringController {
       }
 
       const statusParam = (req.body?.status === "inactive" || req.body?.status === "idle") ? "inactive" : "active";
+      const capturedAtParam = req.body?.captured_at ? new Date(req.body.captured_at) : new Date();
 
       // Calculate exact duration since previous capture
       const prevLogRes = await db.query(
@@ -85,7 +86,7 @@ export class MonitoringController {
       if (prevLogRes.rows.length > 0) {
         const prev = prevLogRes.rows[0];
         if (prev.status === "active" || prev.status === "inactive") {
-          const elapsed = Date.now() - new Date(prev.captured_at).getTime();
+          const elapsed = capturedAtParam.getTime() - new Date(prev.captured_at).getTime();
           if (elapsed > 0 && elapsed <= 10 * 60 * 1000) {
             durationSeconds = Math.min(300, Math.floor(elapsed / 1000));
           }
@@ -94,10 +95,10 @@ export class MonitoringController {
 
       // Insert log into the database
       const result = await db.query(
-        `INSERT INTO screen_logs (user_id, screenshot_path, status, duration_seconds)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO screen_logs (user_id, screenshot_path, status, duration_seconds, captured_at)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING id, captured_at;`,
-        [userId, screenshotPath, statusParam, durationSeconds]
+        [userId, screenshotPath, statusParam, durationSeconds, capturedAtParam]
       );
 
       res.status(200).json({
@@ -205,8 +206,30 @@ export class MonitoringController {
         [session_id, req.user.id, device_uuid || "unknown"]
       );
       
-      console.log(`[API Session] Started session ${session_id} for user ${req.user.id} on device ${device_uuid}`);
-      res.status(200).json({ success: true, session_id });
+      // Fetch organization-level settings for screen monitoring rules (Phase 21 Admin Controls)
+      let screenshotInterval = 300; // default: 5 minutes (in seconds)
+      let screenshotsBlurred = false; // default: no blur
+
+      if (req.user.organization_id) {
+        const { rows } = await db.query(
+          "SELECT screenshot_interval, screenshots_blurred FROM organizations WHERE id = $1;",
+          [req.user.organization_id]
+        );
+        if (rows.length > 0) {
+          screenshotInterval = rows[0].screenshot_interval ?? 300;
+          screenshotsBlurred = !!rows[0].screenshots_blurred;
+        }
+      }
+
+      console.log(`[API Session] Started session ${session_id} for user ${req.user.id}. Rules: Interval=${screenshotInterval}s, Blurred=${screenshotsBlurred}`);
+      res.status(200).json({ 
+        success: true, 
+        session_id,
+        settings: {
+          screenshotInterval,
+          screenshotsBlurred
+        }
+      });
     } catch (error) {
       next(error);
     }
@@ -246,7 +269,12 @@ export class MonitoringController {
       );
       
       res.status(200).json({ success: true, message: "Heartbeat acknowledged." });
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === "23503") { // Foreign key constraint violation (session doesn't exist)
+        console.warn(`[API Heartbeat] Rejected heartbeat: session_id ${req.body.session_id} does not exist.`);
+        res.status(404).json({ error: { message: "Session not found.", code: "SESSION_NOT_FOUND", status: 404 } });
+        return;
+      }
       next(error);
     }
   }
