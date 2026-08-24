@@ -14,7 +14,7 @@ export interface TeamMemberInput {
 
 export class MemberService {
   static async getAll(
-    organizationId?: string | null,
+    organizationId: string | null,
     userCtx?: {
       id: string;
       roleName: string;
@@ -23,6 +23,10 @@ export class MemberService {
       organizationId?: string | null;
       isSuperAdmin?: boolean;
     },
+    dateRange?: {
+      startDate?: string;
+      endDate?: string;
+    },
   ) {
     if (!organizationId) {
       return [];
@@ -30,24 +34,40 @@ export class MemberService {
     const interval = "15 minutes";
     const tickInterval = 300; // 5 minutes per screenshot capture
 
+    const params: any[] = [organizationId];
+    let dateCondition = "";
+    
+    if (dateRange && dateRange.startDate) {
+      const start = dateRange.startDate;
+      const end = dateRange.endDate || start;
+      params.push(start, end);
+      const startIdx = params.length - 1; // 2
+      const endIdx = params.length;       // 3
+      dateCondition = `(sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date >= $${startIdx}::date AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date <= $${endIdx}::date`;
+    } else {
+      dateCondition = `(sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date`;
+    }
+
     let queryStr = `
       SELECT u.*, d.name as department_name, sys_role.name as system_role_name, sys_role.rank as system_role_rank,
         (SELECT status FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_status,
         (SELECT screenshot_path FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_path,
         (SELECT captured_at FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_time,
-        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status != 'lunch' AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as today_seconds,
-        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'lunch' AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as today_lunch_seconds
+        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status != 'lunch' AND ${dateCondition}) as today_seconds,
+        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'lunch' AND ${dateCondition}) as today_lunch_seconds,
+        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'inactive' AND ${dateCondition}) as today_idle_seconds
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
       LEFT JOIN roles sys_role ON u.role_id = sys_role.id
       WHERE u.organization_id = $1
     `;
-    const params: any[] = [organizationId];
 
     if (userCtx && userCtx.roleRank >= 3) {
-      queryStr += ` AND (u.department_id = $2 OR u.id = $3 OR u.id IN (
+      const deptIdx = params.length + 1;
+      const userIdx = params.length + 2;
+      queryStr += ` AND (u.department_id = $${deptIdx} OR u.id = $${userIdx} OR u.id IN (
         SELECT member_id FROM project_members WHERE project_id IN (
-          SELECT project_id FROM project_members WHERE member_id = $3
+          SELECT project_id FROM project_members WHERE member_id = $${userIdx}
         )
       ))`;
       params.push(userCtx.departmentId || null, userCtx.id);
@@ -74,6 +94,7 @@ export class MemberService {
         status: status,
         todaySeconds: r.today_seconds || 0,
         todayLunchSeconds: r.today_lunch_seconds || 0,
+        todayIdleSeconds: r.today_idle_seconds || 0,
         canCreateTasks: !!r.can_create_tasks,
       };
     });

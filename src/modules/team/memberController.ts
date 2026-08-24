@@ -15,9 +15,16 @@ export class MemberController {
             isSuperAdmin: req.user.is_super_admin || false,
           }
         : undefined;
+
+      const { startDate, endDate } = req.query;
+
       const members = await MemberService.getAll(
         req.user?.organization_id || null,
         userCtx,
+        {
+          startDate: typeof startDate === "string" ? startDate : undefined,
+          endDate: typeof endDate === "string" ? endDate : undefined,
+        }
       );
       res.json(members);
     } catch (error) {
