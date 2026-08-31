@@ -32,6 +32,8 @@ router.get("/me", authenticateUser, AuthController.me);
 
 // Organization Subscription Upgrade/Renewal
 router.post("/subscription", authenticateUser, AuthController.updateSubscription);
+router.post("/subscription/create-order", authenticateUser, AuthController.createSubscriptionOrder);
+router.post("/subscription/verify", authenticateUser, AuthController.verifySubscriptionPayment);
 
 // Password Reset Flow
 router.post("/forgot-password", authLimiter, AuthController.forgotPassword);

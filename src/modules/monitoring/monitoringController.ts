@@ -87,8 +87,13 @@ export class MonitoringController {
         const prev = prevLogRes.rows[0];
         if (prev.status === "active" || prev.status === "inactive") {
           const elapsed = capturedAtParam.getTime() - new Date(prev.captured_at).getTime();
-          if (elapsed > 0 && elapsed <= 10 * 60 * 1000) {
-            durationSeconds = Math.min(300, Math.floor(elapsed / 1000));
+          if (elapsed > 0) {
+            if (elapsed <= 10 * 60 * 1000) {
+              durationSeconds = Math.min(300, Math.floor(elapsed / 1000));
+            } else if (elapsed <= 30 * 60 * 1000) {
+              // Background throttling compensation: credit standard 5 minutes (300 seconds) if less than 30 minutes elapsed
+              durationSeconds = 300;
+            }
           }
         }
       }
