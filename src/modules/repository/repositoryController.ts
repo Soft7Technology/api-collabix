@@ -45,7 +45,7 @@ export interface DeploymentItem {
 }
 
 // In-memory fallback dataset for rich demo experience
-let mockRepositories: RepositoryItem[] = [
+const mockRepositories: RepositoryItem[] = [
   {
     id: "repo-1",
     projectId: "p1",
@@ -75,7 +75,7 @@ let mockRepositories: RepositoryItem[] = [
   },
 ];
 
-let mockBranches: Record<string, Array<{ name: string; isDefault: boolean; aheadBehind: string }>> = {
+const mockBranches: Record<string, Array<{ name: string; isDefault: boolean; aheadBehind: string }>> = {
   "repo-1": [
     { name: "main", isDefault: true, aheadBehind: "0 / 0" },
     { name: "development", isDefault: false, aheadBehind: "3 ahead" },
@@ -91,7 +91,7 @@ let mockBranches: Record<string, Array<{ name: string; isDefault: boolean; ahead
   ],
 };
 
-let mockCommits: CommitItem[] = [
+const mockCommits: CommitItem[] = [
   {
     id: "c-101",
     repoId: "repo-1",
@@ -127,7 +127,7 @@ let mockCommits: CommitItem[] = [
   },
 ];
 
-let mockPRs: PullRequestItem[] = [
+const mockPRs: PullRequestItem[] = [
   {
     id: "pr-1",
     repoId: "repo-1",
@@ -150,7 +150,7 @@ let mockPRs: PullRequestItem[] = [
   },
 ];
 
-let mockDeployments: DeploymentItem[] = [
+const mockDeployments: DeploymentItem[] = [
   {
     id: "dep-1",
     repoId: "repo-1",
