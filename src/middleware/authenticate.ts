@@ -45,7 +45,7 @@ export async function authenticateUser(
     const { rows } = await db.query(
       `SELECT u.id, u.email, u.role_id, u.status, u.department_id, u.is_super_admin, u.organization_id, u.can_create_tasks,
               r.name as role_name, r.rank as role_rank,
-              o.name as org_name, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone
+              o.name as org_name, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone, o.created_at as org_created_at
        FROM users u
        JOIN roles r ON u.role_id = r.id
        LEFT JOIN organizations o ON u.organization_id = o.id
@@ -65,10 +65,10 @@ export async function authenticateUser(
     }
 
     if (user.status !== "ACTIVE") {
-      res.status(401).json({
+      res.status(403).json({
         error: {
-          message: "User account is not active.",
-          status: 401,
+          message: "User account is suspended or inactive. Please contact support.",
+          status: 403,
         },
       });
       return;
@@ -79,7 +79,7 @@ export async function authenticateUser(
       "SELECT permission_name FROM role_permissions WHERE role_id = $1;",
       [user.role_id],
     );
-    const permissions = permResult.rows.map((r) => r.permission_name);
+    const permissions = permResult.rows.map((r: any) => r.permission_name);
 
     req.user = {
       id: user.id,
@@ -100,6 +100,7 @@ export async function authenticateUser(
             subscription_status: user.subscription_status,
             trial_ends_at: user.trial_ends_at,
             is_approved: user.org_is_approved,
+            created_at: user.org_created_at,
           }
         : null,
     };

@@ -1,14 +1,15 @@
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
-import { AuthService, hashToken } from "../../services/authService.js";
+import Razorpay from "razorpay";
+import { AuthService, hashToken } from "../services/authService.js";
 import {
   generateAccessToken,
   generateRefreshToken,
   comparePassword,
   hashPassword,
-} from "../../utils/auth.js";
-import { db } from "../../db/index.js";
-import { config } from "../../config/index.js";
+} from "../utils/auth.js";
+import { db } from "../db/index.js";
+import { config } from "../config/index.js";
 
 // Cookie configurations
 const cookieOptions = {
@@ -248,11 +249,7 @@ export class AuthController {
     try {
       const refreshToken = req.cookies?.refresh_token;
       if (refreshToken) {
-        try {
-          await AuthService.revokeRefreshToken(refreshToken);
-        } catch (tokenErr: any) {
-          console.warn("⚠️ Non-fatal DB warning revoking refresh token on logout:", tokenErr.message);
-        }
+        await AuthService.revokeRefreshToken(refreshToken);
       }
 
       // Clear all authentication and CSRF cookies
@@ -297,7 +294,7 @@ export class AuthController {
         `SELECT u.id, u.name, u.email, u.avatar_color AS "avatarColor", u.initials, u.role_id AS "roleId", u.status, u.is_super_admin AS "isSuperAdmin", u.organization_id AS "organizationId", u.department_id AS "departmentId", u.can_create_tasks AS "canCreateTasks",
                 r.name AS "roleName", r.rank AS "roleRank",
                 d.name AS "departmentName",
-                o.name AS "orgName", o.subscription_status AS "subscriptionStatus", o.trial_ends_at AS "trialEndsAt", o.is_approved AS "orgIsApproved", o.timezone AS "orgTimezone"
+                o.name AS "orgName", o.subscription_status AS "subscriptionStatus", o.trial_ends_at AS "trialEndsAt", o.is_approved AS "orgIsApproved", o.timezone AS "orgTimezone", o.created_at AS "orgCreatedAt"
          FROM users u
          JOIN roles r ON u.role_id = r.id
          LEFT JOIN departments d ON u.department_id = d.id
@@ -337,6 +334,7 @@ export class AuthController {
               subscriptionStatus: user.subscriptionStatus,
               trialEndsAt: user.trialEndsAt,
               isApproved: user.orgIsApproved,
+              createdAt: user.orgCreatedAt,
             }
           : null,
       };
@@ -582,16 +580,16 @@ export class AuthController {
   static async updateSubscription(req: Request, res: Response, next: NextFunction) {
     try {
       const user = (req as any).user;
-      if (!user || !user.organizationId) {
+      if (!user || !user.organization_id) {
         res.status(400).json({ error: { message: "Organization ID is missing.", status: 400 } });
         return;
       }
 
       // Strict Admin permission check: Only Admins can manage billing / upgrade plan
       const isAdmin =
-        user.isSuperAdmin ||
-        user.roleName === "Admin" ||
-        user.roleRank === 1 ||
+        user.is_super_admin ||
+        user.role_name === "Admin" ||
+        user.role_rank === 1 ||
         (user.permissions && user.permissions.includes("admin:manage"));
 
       if (!isAdmin) {
@@ -607,12 +605,153 @@ export class AuthController {
       const { planId, billingCycle } = req.body;
       const result = await AuthService.updateSubscription({
         userId: user.id,
-        organizationId: user.organizationId,
+        organizationId: user.organization_id,
         planId,
         billingCycle,
       });
 
       res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: { message: error.message, status: 400 } });
+    }
+  }
+
+  /**
+   * POST /auth/subscription/create-order
+   */
+  static async createSubscriptionOrder(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = (req as any).user;
+      if (!user || !user.organization_id) {
+        res.status(400).json({ error: { message: "Organization ID is missing.", status: 400 } });
+        return;
+      }
+
+      // Check admin permission
+      const isAdmin =
+        user.is_super_admin ||
+        user.role_name === "Admin" ||
+        user.role_rank === 1 ||
+        (user.permissions && user.permissions.includes("admin:manage"));
+
+      if (!isAdmin) {
+        res.status(403).json({
+          error: {
+            message: "Only organization Admins are authorized to manage billing and upgrade subscription plans.",
+            status: 403,
+          },
+        });
+        return;
+      }
+
+      const { planId, billingCycle } = req.body;
+      if (!planId || !billingCycle) {
+        res.status(400).json({ error: { message: "Plan ID and billing cycle are required.", status: 400 } });
+        return;
+      }
+
+      const plans: Record<string, { monthly: number; yearly: number }> = {
+        pro: { monthly: 450, yearly: 4500 },
+        enterprise: { monthly: 330, yearly: 3300 },
+        basic: { monthly: 200, yearly: 2000 },
+      };
+
+      const planPrices = plans[planId.toLowerCase()];
+      if (!planPrices) {
+        res.status(400).json({ error: { message: "Invalid Plan ID.", status: 400 } });
+        return;
+      }
+
+      const basePrice = billingCycle === "monthly" ? planPrices.monthly : planPrices.yearly;
+      const tax = Math.round(basePrice * 0.18);
+      const totalAmountPaise = (basePrice + tax) * 100;
+
+      const keyId = process.env.RAZORPAY_KEY_ID;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+      if (!keyId || !keySecret) {
+        res.status(500).json({ error: { message: "Razorpay credentials are not configured on the server.", status: 500 } });
+        return;
+      }
+
+      const razorpayInstance = new Razorpay({
+        key_id: keyId,
+        key_secret: keySecret,
+      });
+
+      const orderOptions = {
+        amount: Math.round(totalAmountPaise),
+        currency: "INR",
+        receipt: `receipt_${user.organization_id}_${Date.now()}`,
+        notes: {
+          organizationId: user.organization_id,
+          userId: user.id,
+          planId,
+          billingCycle,
+        },
+      };
+
+      const order = await razorpayInstance.orders.create(orderOptions);
+
+      res.json({
+        orderId: order.id,
+        amount: order.amount,
+        currency: order.currency,
+        keyId,
+      });
+    } catch (error: any) {
+      res.status(400).json({ error: { message: error.message, status: 400 } });
+    }
+  }
+
+  /**
+   * POST /auth/subscription/verify
+   */
+  static async verifySubscriptionPayment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = (req as any).user;
+      if (!user || !user.organization_id) {
+        res.status(400).json({ error: { message: "Organization ID is missing.", status: 400 } });
+        return;
+      }
+
+      const { razorpay_payment_id, razorpay_order_id, razorpay_signature, planId, billingCycle } = req.body;
+
+      if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
+        res.status(400).json({ error: { message: "Payment ID, order ID, and signature are required.", status: 400 } });
+        return;
+      }
+
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keySecret) {
+        res.status(500).json({ error: { message: "Razorpay secret is not configured on the server.", status: 500 } });
+        return;
+      }
+
+      // Verify Razorpay signature
+      const expectedSignature = crypto
+        .createHmac("sha256", keySecret)
+        .update(razorpay_order_id + "|" + razorpay_payment_id)
+        .digest("hex");
+
+      if (expectedSignature !== razorpay_signature) {
+        res.status(400).json({ error: { message: "Payment verification failed: invalid signature.", status: 400 } });
+        return;
+      }
+
+      // If signature matches, perform organization subscription upgrade in DB
+      const result = await AuthService.updateSubscription({
+        userId: user.id,
+        organizationId: user.organization_id,
+        planId,
+        billingCycle,
+      });
+
+      res.json({
+        success: true,
+        message: "Payment verified and subscription activated successfully!",
+        data: result,
+      });
     } catch (error: any) {
       res.status(400).json({ error: { message: error.message, status: 400 } });
     }
