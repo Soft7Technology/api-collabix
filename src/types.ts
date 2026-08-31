@@ -39,6 +39,7 @@ declare global {
           subscription_status: string;
           trial_ends_at: string;
           is_approved: boolean;
+          created_at?: string;
         } | null;
       };
     }
