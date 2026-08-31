@@ -248,7 +248,11 @@ export class AuthController {
     try {
       const refreshToken = req.cookies?.refresh_token;
       if (refreshToken) {
-        await AuthService.revokeRefreshToken(refreshToken);
+        try {
+          await AuthService.revokeRefreshToken(refreshToken);
+        } catch (tokenErr: any) {
+          console.warn("⚠️ Non-fatal DB warning revoking refresh token on logout:", tokenErr.message);
+        }
       }
 
       // Clear all authentication and CSRF cookies
