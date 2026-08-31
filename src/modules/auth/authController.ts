@@ -1,15 +1,15 @@
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import Razorpay from "razorpay";
-import { AuthService, hashToken } from "../services/authService.js";
+import { AuthService, hashToken } from "../../services/authService.js";
 import {
   generateAccessToken,
   generateRefreshToken,
   comparePassword,
   hashPassword,
-} from "../utils/auth.js";
-import { db } from "../db/index.js";
-import { config } from "../config/index.js";
+} from "../../utils/auth.js";
+import { db } from "../../db/index.js";
+import { config } from "../../config/index.js";
 
 // Cookie configurations
 const cookieOptions = {
