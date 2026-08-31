@@ -52,7 +52,7 @@ let mockRepositories: RepositoryItem[] = [
     name: "Collabix Frontend",
     defaultBranch: "main",
     visibility: "private",
-    repoUrl: "https://github.com/Soft7Technology/Collabix.git",
+    repoUrl: "",
     createdAt: "2026-08-01T10:00:00Z",
   },
   {
@@ -70,7 +70,7 @@ let mockRepositories: RepositoryItem[] = [
     name: "Collabix Mobile App",
     defaultBranch: "main",
     visibility: "private",
-    repoUrl: "https://github.com/Soft7Technology/collabix-mobile.git",
+    repoUrl: "",
     createdAt: "2026-08-02T11:00:00Z",
   },
 ];
