@@ -288,19 +288,20 @@ export class RepositoryService {
   /**
    * Get Repository Dashboard info.
    */
-  public static async getDashboard(repoId: string, organizationId: string) {
+  public static async getDashboard(repoId: string, organizationId: string, branch?: string) {
     const repo = await this.getById(repoId, organizationId);
     if (!repo) return null;
 
-    // Fetch latest commit
-    const { rows: commits } = await db.query(
-      `SELECT hash AS "commitHash", message, author_name AS "authorName", created_at AS "createdAt"
-       FROM repository_commits
-       WHERE repository_id = $1
-       ORDER BY created_at DESC
-       LIMIT 1;`,
-      [repoId]
-    );
+    let queryStr = `SELECT hash AS "commitHash", message, author_name AS "authorName", created_at AS "createdAt"
+                    FROM repository_commits
+                    WHERE repository_id = $1`;
+    const params: any[] = [repoId];
+    if (branch) {
+      queryStr += " AND (branch = $2 OR branch IS NULL)";
+      params.push(branch);
+    }
+    queryStr += " ORDER BY created_at DESC LIMIT 1;";
+    const { rows: commits } = await db.query(queryStr, params);
 
     return {
       buildStatus: repo.buildStatus || "Passing",
@@ -339,27 +340,35 @@ export class RepositoryService {
   /**
    * Get Repository commits.
    */
-  public static async getCommits(repoId: string, userId?: string) {
-    const { rows } = await db.query(
-      `SELECT id, hash, message, author_name AS "authorName", created_at AS "date", branch, task_id AS "taskId"
-       FROM repository_commits
-       WHERE repository_id = $1
-       ORDER BY created_at DESC;`,
+  public static async getCommits(repoId: string, userId?: string, branch?: string) {
+    const { rows: repoRows } = await db.query(
+      "SELECT github_owner, github_repo_name, default_branch FROM repositories WHERE id = $1 LIMIT 1;",
       [repoId]
     );
+    const repo = repoRows[0];
 
-    // Auto-sync if only default initial commit exists
-    if ((rows.length <= 1 || (rows.length > 0 && rows[0].message.startsWith("Initial commit: Connected repository"))) && userId) {
-      await this.syncRepo(repoId, userId);
-      const { rows: refreshed } = await db.query(
-        `SELECT id, hash, message, author_name AS "authorName", created_at AS "date", branch, task_id AS "taskId"
-         FROM repository_commits
-         WHERE repository_id = $1
-         ORDER BY created_at DESC;`,
-        [repoId]
-      );
-      if (refreshed.length > 0) return refreshed;
+    // If connected to GitHub, fetch live commits directly
+    if (repo?.github_owner && repo?.github_repo_name && userId) {
+      let token: string | null = null;
+      const { rows: userRows } = await db.query("SELECT github_token FROM users WHERE id = $1 LIMIT 1;", [userId]);
+      token = userRows[0]?.github_token || null;
+      const targetBranch = branch || repo.default_branch || "main";
+      const liveCommits = await GithubService.getRepoCommits(token, repo.github_owner, repo.github_repo_name, targetBranch);
+      if (liveCommits.length > 0) {
+        return liveCommits;
+      }
     }
+
+    let queryStr = `SELECT id, hash, message, author_name AS "authorName", created_at AS "date", branch, task_id AS "taskId"
+                    FROM repository_commits
+                    WHERE repository_id = $1`;
+    const params: any[] = [repoId];
+    if (branch) {
+      queryStr += " AND (branch = $2 OR branch IS NULL)";
+      params.push(branch);
+    }
+    queryStr += " ORDER BY created_at DESC;";
+    const { rows } = await db.query(queryStr, params);
 
     return rows;
   }
@@ -367,7 +376,7 @@ export class RepositoryService {
   /**
    * Syncs latest branches, commits, and pull requests from GitHub for an existing repository.
    */
-  public static async syncRepo(repoId: string, userId?: string) {
+  public static async syncRepo(repoId: string, userId?: string, activeBranch?: string) {
     const { rows: repoRows } = await db.query("SELECT * FROM repositories WHERE id = $1 LIMIT 1;", [repoId]);
     const repo = repoRows[0];
     if (!repo) return null;
@@ -407,16 +416,24 @@ export class RepositoryService {
       }
     }
 
-    // 2. Sync Commits
-    const ghCommits = await GithubService.getRepoCommits(token, owner, repoName, repo.default_branch || "main");
-    if (ghCommits.length > 0) {
-      await db.query("DELETE FROM repository_commits WHERE repository_id = $1;", [repoId]);
+    // 2. Sync Commits for active branch, default branch, and other branches
+    const branchesToSync = new Set<string>();
+    if (activeBranch) branchesToSync.add(activeBranch);
+    if (repo.default_branch) branchesToSync.add(repo.default_branch);
+    ghBranches.forEach((b: any) => branchesToSync.add(b.name));
+
+    await db.query("DELETE FROM repository_commits WHERE repository_id = $1;", [repoId]);
+
+    let totalCommits = 0;
+    for (const br of Array.from(branchesToSync)) {
+      const ghCommits = await GithubService.getRepoCommits(token, owner, repoName, br);
+      totalCommits += ghCommits.length;
       for (const c of ghCommits) {
         const commitId = `commit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
         await db.query(
           `INSERT INTO repository_commits (id, repository_id, hash, message, author_name, branch, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7);`,
-          [commitId, repoId, c.hash, c.message, c.authorName, c.branch || repo.default_branch || "main", c.date]
+          [commitId, repoId, c.hash, c.message, c.authorName, br, c.date]
         );
       }
     }
@@ -438,7 +455,7 @@ export class RepositoryService {
     return {
       synced: true,
       branchesCount: ghBranches.length,
-      commitsCount: ghCommits.length,
+      commitsCount: totalCommits,
       pullsCount: ghPulls.length,
     };
   }

@@ -236,7 +236,7 @@ export class GithubService {
         headers["Authorization"] = `Bearer ${token}`;
       }
 
-      const url = `https://api.github.com/repos/${owner}/${repo}/commits?per_page=50${branch ? `&sha=${branch}` : ""}`;
+      const url = `https://api.github.com/repos/${owner}/${repo}/commits?per_page=100${branch ? `&sha=${branch}` : ""}`;
       const res = await axios.get(url, { headers });
       return res.data.map((c: any) => ({
         hash: c.sha.substring(0, 7),

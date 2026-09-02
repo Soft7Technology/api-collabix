@@ -66,7 +66,8 @@ export class RepositoryController {
       }
 
       const { id } = req.params;
-      const data = await RepositoryService.getDashboard(id, orgId);
+      const branch = req.query.branch as string | undefined;
+      const data = await RepositoryService.getDashboard(id, orgId!, branch);
       if (!data) {
         res.status(404).json({ error: { message: "Repository not found.", status: 404 } });
         return;
@@ -99,7 +100,8 @@ export class RepositoryController {
     try {
       const { id } = req.params;
       const userId = req.user?.id;
-      const commits = await RepositoryService.getCommits(id, userId);
+      const branch = req.query.branch as string | undefined;
+      const commits = await RepositoryService.getCommits(id, userId, branch);
       res.json(commits);
     } catch (error) {
       next(error);
@@ -316,7 +318,8 @@ export class RepositoryController {
       const { repoId } = req.params;
       const userId = req.user?.id;
 
-      const result = await RepositoryService.syncRepo(repoId, userId);
+      const branch = (req.query.branch as string) || (req.body?.branch as string) || undefined;
+      const result = await RepositoryService.syncRepo(repoId, userId, branch);
       res.json(result);
     } catch (error) {
       next(error);
