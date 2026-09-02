@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { RepositoryService } from "../services/repositoryService.js";
+import { GithubService } from "../services/githubService.js";
+import { db } from "../db/index.js";
 
 export class RepositoryController {
   /**
@@ -82,7 +84,8 @@ export class RepositoryController {
   public static async getBranches(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const branches = await RepositoryService.getBranches(id);
+      const userId = req.user?.id;
+      const branches = await RepositoryService.getBranches(id, userId);
       res.json(branches);
     } catch (error) {
       next(error);
@@ -95,7 +98,8 @@ export class RepositoryController {
   public static async getCommits(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const commits = await RepositoryService.getCommits(id);
+      const userId = req.user?.id;
+      const commits = await RepositoryService.getCommits(id, userId);
       res.json(commits);
     } catch (error) {
       next(error);
@@ -204,16 +208,195 @@ export class RepositoryController {
    */
   public static async getFiles(req: Request, res: Response, next: NextFunction) {
     try {
-      // Returns a standard layout representing the repository directory tree.
-      // The frontend uses local DEFAULT_FILES mostly, but we support the endpoint.
-      res.json([
-        { name: "src", type: "folder", path: "src", lastCommitMessage: "Fix login validation & auth state", updatedAt: "2 hours ago" },
-        { name: "components", type: "folder", path: "components", lastCommitMessage: "Update dashboard UI & sprint module", updatedAt: "5 hours ago" },
-        { name: "public", type: "folder", path: "public", lastCommitMessage: "Add application branding assets", updatedAt: "1 day ago" },
-        { name: "package.json", type: "file", path: "package.json", lastCommitMessage: "Update dependencies to latest versions", updatedAt: "1 day ago", size: "2.4 KB" },
-        { name: "README.md", type: "file", path: "README.md", lastCommitMessage: "Update system documentation & quickstart guide", updatedAt: "2 days ago", size: "3.8 KB" },
-        { name: "tsconfig.json", type: "file", path: "tsconfig.json", lastCommitMessage: "Configure strict TypeScript rules", updatedAt: "3 days ago", size: "1.1 KB" },
-      ]);
+      const { repoId } = req.params;
+      const path = (req.query.path as string) || "";
+      const branch = (req.query.branch as string) || undefined;
+      const userId = req.user?.id;
+
+      const { rows: repoRows } = await db.query(
+        "SELECT github_owner, github_repo_name, repo_url, default_branch FROM repositories WHERE id = $1 LIMIT 1;",
+        [repoId]
+      );
+      const repo = repoRows[0];
+      if (!repo) {
+        res.status(404).json({ error: { message: "Repository not found.", status: 404 } });
+        return;
+      }
+
+      let owner = repo.github_owner;
+      let repoName = repo.github_repo_name;
+      if ((!owner || !repoName) && repo.repo_url) {
+        const match = repo.repo_url.match(/github\.com[/:]([^/]+)\/([^/.]+)/i);
+        if (match) {
+          owner = match[1];
+          repoName = match[2];
+        }
+      }
+
+      let token: string | null = null;
+      if (userId) {
+        const { rows: userRows } = await db.query(
+          "SELECT github_token FROM users WHERE id = $1 LIMIT 1;",
+          [userId]
+        );
+        token = userRows[0]?.github_token || null;
+      }
+
+      if (owner && repoName) {
+        const contents = await GithubService.getRepoContents(token, owner, repoName, path, branch || repo.default_branch);
+        if (contents && contents.length > 0) {
+          res.json(contents);
+          return;
+        }
+      }
+
+      res.json([]);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/repositories/:repoId/readme
+   */
+  public static async getReadme(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { repoId } = req.params;
+      const branch = (req.query.branch as string) || undefined;
+      const userId = req.user?.id;
+
+      const { rows: repoRows } = await db.query(
+        "SELECT name, github_owner, github_repo_name, repo_url, default_branch FROM repositories WHERE id = $1 LIMIT 1;",
+        [repoId]
+      );
+      const repo = repoRows[0];
+      if (!repo) {
+        res.status(404).json({ error: { message: "Repository not found.", status: 404 } });
+        return;
+      }
+
+      let owner = repo.github_owner;
+      let repoName = repo.github_repo_name;
+      if ((!owner || !repoName) && repo.repo_url) {
+        const match = repo.repo_url.match(/github\.com[/:]([^/]+)\/([^/.]+)/i);
+        if (match) {
+          owner = match[1];
+          repoName = match[2];
+        }
+      }
+
+      let token: string | null = null;
+      if (userId) {
+        const { rows: userRows } = await db.query(
+          "SELECT github_token FROM users WHERE id = $1 LIMIT 1;",
+          [userId]
+        );
+        token = userRows[0]?.github_token || null;
+      }
+
+      if (owner && repoName) {
+        const content = await GithubService.getRepoReadme(token, owner, repoName, branch || repo.default_branch);
+        if (content) {
+          res.json({ content });
+          return;
+        }
+      }
+
+      res.json({ content: `# ${repo.name}\n\nRepository connected to Collabix.` });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/repositories/:repoId/sync
+   */
+  public static async syncRepo(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { repoId } = req.params;
+      const userId = req.user?.id;
+
+      const result = await RepositoryService.syncRepo(repoId, userId);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/repositories/:repoId/file-content
+   */
+  public static async getFileContent(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { repoId } = req.params;
+      const path = (req.query.path as string) || "";
+      const branch = (req.query.branch as string) || undefined;
+      const userId = req.user?.id;
+
+      if (!path) {
+        res.status(400).json({ error: { message: "File path is required.", status: 400 } });
+        return;
+      }
+
+      const { rows: repoRows } = await db.query(
+        "SELECT name, github_owner, github_repo_name, repo_url, default_branch FROM repositories WHERE id = $1 LIMIT 1;",
+        [repoId]
+      );
+      const repo = repoRows[0];
+      if (!repo) {
+        res.status(404).json({ error: { message: "Repository not found.", status: 404 } });
+        return;
+      }
+
+      let owner = repo.github_owner;
+      let repoName = repo.github_repo_name;
+      if ((!owner || !repoName) && repo.repo_url) {
+        const match = repo.repo_url.match(/github\.com[/:]([^/]+)\/([^/.]+)/i);
+        if (match) {
+          owner = match[1];
+          repoName = match[2];
+        }
+      }
+
+      let token: string | null = null;
+      if (userId) {
+        const { rows: userRows } = await db.query(
+          "SELECT github_token FROM users WHERE id = $1 LIMIT 1;",
+          [userId]
+        );
+        token = userRows[0]?.github_token || null;
+      }
+
+      if (owner && repoName) {
+        const fileResult = await GithubService.getFileContent(token, owner, repoName, path, branch || repo.default_branch);
+        res.json({
+          ...fileResult,
+          path,
+          name: path.split("/").pop(),
+        });
+        return;
+      }
+
+      res.status(404).json({ error: { message: "Repository is not linked to GitHub.", status: 404 } });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * DELETE /api/repositories/:repoId
+   */
+  public static async deleteRepository(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { repoId } = req.params;
+      const orgId = req.user?.organization_id;
+      if (!orgId) {
+        res.status(401).json({ error: { message: "Unauthorized", status: 401 } });
+        return;
+      }
+
+      const result = await RepositoryService.delete(repoId, orgId);
+      res.json(result);
     } catch (error) {
       next(error);
     }

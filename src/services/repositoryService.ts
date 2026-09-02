@@ -1,5 +1,6 @@
 import { db, pool } from "../db/index.js";
 import { DashboardService } from "./dashboardService.js";
+import { GithubService } from "./githubService.js";
 
 export interface RepositoryInput {
   name: string;
@@ -103,6 +104,52 @@ export class RepositoryService {
     const id = `repo-${Date.now()}`;
     const defaultBranch = repo.defaultBranch || "main";
     const visibility = repo.visibility || "private";
+
+    let githubOwner = repo.githubOwner;
+    let githubRepoName = repo.githubRepoName;
+    if ((!githubOwner || !githubRepoName) && repo.repoUrl) {
+      const match = repo.repoUrl.match(/github\.com[/:]([^/]+)\/([^/.]+)/i);
+      if (match) {
+        githubOwner = match[1];
+        githubRepoName = match[2];
+      }
+    }
+
+    // Duplicate Prevention Check
+    if (githubOwner && githubRepoName) {
+      const { rows: existing } = await db.query(
+        `SELECT id, name FROM repositories 
+         WHERE organization_id = $1 
+         AND LOWER(github_owner) = LOWER($2) 
+         AND LOWER(github_repo_name) = LOWER($3)
+         LIMIT 1;`,
+        [organizationId, githubOwner, githubRepoName]
+      );
+      if (existing.length > 0) {
+        throw new Error(`Repository "${githubOwner}/${githubRepoName}" is already connected to this workspace.`);
+      }
+    } else if (repo.repoUrl) {
+      const { rows: existing } = await db.query(
+        `SELECT id, name FROM repositories 
+         WHERE organization_id = $1 AND repo_url = $2
+         LIMIT 1;`,
+        [organizationId, repo.repoUrl]
+      );
+      if (existing.length > 0) {
+        throw new Error(`Repository with URL "${repo.repoUrl}" is already connected to this workspace.`);
+      }
+    } else {
+      const { rows: existing } = await db.query(
+        `SELECT id, name FROM repositories 
+         WHERE organization_id = $1 AND project_id = $2 AND LOWER(name) = LOWER($3)
+         LIMIT 1;`,
+        [organizationId, repo.projectId, repo.name]
+      );
+      if (existing.length > 0) {
+        throw new Error(`A repository named "${repo.name}" already exists in this project.`);
+      }
+    }
+
     const client = await pool.connect();
 
     try {
@@ -122,36 +169,86 @@ export class RepositoryService {
           visibility,
           repo.repoUrl || "",
           repo.description || "",
-          repo.githubOwner || null,
-          repo.githubRepoName || null,
+          githubOwner || null,
+          githubRepoName || null,
           repo.webhookId || null,
         ]
       );
 
       const createdRepo = rows[0];
 
-      // 2. Insert default branch
-      const branchId = `br-${Date.now()}`;
-      await client.query(
-        `INSERT INTO repository_branches (id, repository_id, name, is_default, ahead_behind)
-         VALUES ($1, $2, $3, $4, $5);`,
-        [branchId, id, defaultBranch, true, "0 / 0"]
-      );
-
-      // Fetch user's name
-      const { rows: userRows } = await client.query("SELECT name FROM users WHERE id = $1 LIMIT 1;", [userId]);
+      // Fetch user's name & token
+      const { rows: userRows } = await client.query("SELECT name, github_token FROM users WHERE id = $1 LIMIT 1;", [userId]);
       const userName = userRows[0]?.name || "System";
+      const githubToken = userRows[0]?.github_token || null;
 
-      // Insert default initial commit
-      const commitId = `commit-${Date.now()}`;
-      const commitHash = Math.random().toString(16).substring(2, 9);
-      await client.query(
-        `INSERT INTO repository_commits (id, repository_id, hash, message, author_name, branch)
-         VALUES ($1, $2, $3, $4, $5, $6);`,
-        [commitId, id, commitHash, `Initial commit: Connected repository "${repo.name}"`, userName, defaultBranch]
-      );
+      // 2. Sync branches from GitHub if connected
+      let syncedBranches = false;
+      if (githubOwner && githubRepoName) {
+        const ghBranches = await GithubService.getRepoBranches(githubToken, githubOwner, githubRepoName);
+        if (ghBranches.length > 0) {
+          syncedBranches = true;
+          for (const b of ghBranches) {
+            const branchId = `br-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+            await client.query(
+              `INSERT INTO repository_branches (id, repository_id, name, is_default, ahead_behind)
+               VALUES ($1, $2, $3, $4, $5);`,
+              [branchId, id, b.name, b.name === defaultBranch || b.isDefault, b.aheadBehind || "0 / 0"]
+            );
+          }
+        }
+      }
 
-      // 3. Log repository connection in specific repo activity feed
+      if (!syncedBranches) {
+        const branchId = `br-${Date.now()}`;
+        await client.query(
+          `INSERT INTO repository_branches (id, repository_id, name, is_default, ahead_behind)
+           VALUES ($1, $2, $3, $4, $5);`,
+          [branchId, id, defaultBranch, true, "0 / 0"]
+        );
+      }
+
+      // 3. Sync commits from GitHub if connected
+      let syncedCommits = false;
+      if (githubOwner && githubRepoName) {
+        const ghCommits = await GithubService.getRepoCommits(githubToken, githubOwner, githubRepoName, defaultBranch);
+        if (ghCommits.length > 0) {
+          syncedCommits = true;
+          for (const c of ghCommits) {
+            const commitId = `commit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+            await client.query(
+              `INSERT INTO repository_commits (id, repository_id, hash, message, author_name, branch, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7);`,
+              [commitId, id, c.hash, c.message, c.authorName, c.branch || defaultBranch, c.date]
+            );
+          }
+        }
+      }
+
+      if (!syncedCommits) {
+        const commitId = `commit-${Date.now()}`;
+        const commitHash = Math.random().toString(16).substring(2, 9);
+        await client.query(
+          `INSERT INTO repository_commits (id, repository_id, hash, message, author_name, branch)
+           VALUES ($1, $2, $3, $4, $5, $6);`,
+          [commitId, id, commitHash, `Initial commit: Connected repository "${repo.name}"`, userName, defaultBranch]
+        );
+      }
+
+      // 4. Sync PRs from GitHub if connected
+      if (githubOwner && githubRepoName) {
+        const ghPulls = await GithubService.getRepoPullRequests(githubToken, githubOwner, githubRepoName);
+        for (const pr of ghPulls) {
+          const prId = `pr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+          await client.query(
+            `INSERT INTO repository_pull_requests (id, repository_id, title, status, source_branch, target_branch, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7);`,
+            [prId, id, pr.title, pr.status.toLowerCase(), pr.sourceBranch, pr.targetBranch, pr.createdAt]
+          );
+        }
+      }
+
+      // 5. Log repository connection in specific repo activity feed
       const actId = `act-${Date.now()}`;
       await client.query(
         `INSERT INTO repository_activity (id, repository_id, user_id, action, details)
@@ -214,7 +311,7 @@ export class RepositoryService {
   /**
    * Get Repository branches.
    */
-  public static async getBranches(repoId: string) {
+  public static async getBranches(repoId: string, userId?: string) {
     const { rows } = await db.query(
       `SELECT name, is_default AS "isDefault", ahead_behind AS "aheadBehind"
        FROM repository_branches
@@ -222,13 +319,27 @@ export class RepositoryService {
        ORDER BY is_default DESC, name ASC;`,
       [repoId]
     );
+
+    // Auto-sync if 1 or 0 branches and linked to GitHub
+    if (rows.length <= 1 && userId) {
+      await this.syncRepo(repoId, userId);
+      const { rows: refreshed } = await db.query(
+        `SELECT name, is_default AS "isDefault", ahead_behind AS "aheadBehind"
+         FROM repository_branches
+         WHERE repository_id = $1
+         ORDER BY is_default DESC, name ASC;`,
+        [repoId]
+      );
+      if (refreshed.length > 0) return refreshed;
+    }
+
     return rows;
   }
 
   /**
    * Get Repository commits.
    */
-  public static async getCommits(repoId: string) {
+  public static async getCommits(repoId: string, userId?: string) {
     const { rows } = await db.query(
       `SELECT id, hash, message, author_name AS "authorName", created_at AS "date", branch, task_id AS "taskId"
        FROM repository_commits
@@ -236,7 +347,100 @@ export class RepositoryService {
        ORDER BY created_at DESC;`,
       [repoId]
     );
+
+    // Auto-sync if only default initial commit exists
+    if ((rows.length <= 1 || (rows.length > 0 && rows[0].message.startsWith("Initial commit: Connected repository"))) && userId) {
+      await this.syncRepo(repoId, userId);
+      const { rows: refreshed } = await db.query(
+        `SELECT id, hash, message, author_name AS "authorName", created_at AS "date", branch, task_id AS "taskId"
+         FROM repository_commits
+         WHERE repository_id = $1
+         ORDER BY created_at DESC;`,
+        [repoId]
+      );
+      if (refreshed.length > 0) return refreshed;
+    }
+
     return rows;
+  }
+
+  /**
+   * Syncs latest branches, commits, and pull requests from GitHub for an existing repository.
+   */
+  public static async syncRepo(repoId: string, userId?: string) {
+    const { rows: repoRows } = await db.query("SELECT * FROM repositories WHERE id = $1 LIMIT 1;", [repoId]);
+    const repo = repoRows[0];
+    if (!repo) return null;
+
+    let owner = repo.github_owner;
+    let repoName = repo.github_repo_name;
+    if ((!owner || !repoName) && repo.repo_url) {
+      const match = repo.repo_url.match(/github\.com[/:]([^/]+)\/([^/.]+)/i);
+      if (match) {
+        owner = match[1];
+        repoName = match[2];
+        await db.query("UPDATE repositories SET github_owner = $1, github_repo_name = $2 WHERE id = $3;", [owner, repoName, repoId]);
+      }
+    }
+
+    if (!owner || !repoName) {
+      return { synced: false, message: "Not linked to a GitHub repository." };
+    }
+
+    let token: string | null = null;
+    if (userId) {
+      const { rows: userRows } = await db.query("SELECT github_token FROM users WHERE id = $1 LIMIT 1;", [userId]);
+      token = userRows[0]?.github_token || null;
+    }
+
+    // 1. Sync Branches
+    const ghBranches = await GithubService.getRepoBranches(token, owner, repoName);
+    if (ghBranches.length > 0) {
+      await db.query("DELETE FROM repository_branches WHERE repository_id = $1;", [repoId]);
+      for (const b of ghBranches) {
+        const branchId = `br-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        await db.query(
+          `INSERT INTO repository_branches (id, repository_id, name, is_default, ahead_behind)
+           VALUES ($1, $2, $3, $4, $5);`,
+          [branchId, repoId, b.name, b.name === (repo.default_branch || "main") || b.isDefault, b.aheadBehind || "0 / 0"]
+        );
+      }
+    }
+
+    // 2. Sync Commits
+    const ghCommits = await GithubService.getRepoCommits(token, owner, repoName, repo.default_branch || "main");
+    if (ghCommits.length > 0) {
+      await db.query("DELETE FROM repository_commits WHERE repository_id = $1;", [repoId]);
+      for (const c of ghCommits) {
+        const commitId = `commit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        await db.query(
+          `INSERT INTO repository_commits (id, repository_id, hash, message, author_name, branch, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7);`,
+          [commitId, repoId, c.hash, c.message, c.authorName, c.branch || repo.default_branch || "main", c.date]
+        );
+      }
+    }
+
+    // 3. Sync Pull Requests
+    const ghPulls = await GithubService.getRepoPullRequests(token, owner, repoName);
+    if (ghPulls.length > 0) {
+      await db.query("DELETE FROM repository_pull_requests WHERE repository_id = $1;", [repoId]);
+      for (const pr of ghPulls) {
+        const prId = `pr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        await db.query(
+          `INSERT INTO repository_pull_requests (id, repository_id, title, status, source_branch, target_branch, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7);`,
+          [prId, repoId, pr.title, pr.status.toLowerCase(), pr.sourceBranch, pr.targetBranch, pr.createdAt]
+        );
+      }
+    }
+
+    return {
+      synced: true,
+      branchesCount: ghBranches.length,
+      commitsCount: ghCommits.length,
+      pullsCount: ghPulls.length,
+    };
   }
 
   /**
@@ -640,5 +844,22 @@ export class RepositoryService {
           }
         : null,
     }));
+  }
+
+  /**
+   * Disconnect and delete a repository and all associated branches/commits/PRs (cascaded).
+   */
+  public static async delete(repoId: string, organizationId: string) {
+    const { rows: repoRows } = await db.query(
+      "SELECT id, name FROM repositories WHERE id = $1 AND organization_id = $2 LIMIT 1;",
+      [repoId, organizationId]
+    );
+    const repo = repoRows[0];
+    if (!repo) {
+      throw new Error("Repository not found or unauthorized.");
+    }
+
+    await db.query("DELETE FROM repositories WHERE id = $1;", [repoId]);
+    return { success: true, message: `Repository "${repo.name}" has been disconnected.` };
   }
 }

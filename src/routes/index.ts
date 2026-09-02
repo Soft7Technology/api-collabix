@@ -238,6 +238,10 @@ router.post("/repositories/:repoId/pull-requests", requireCodeAccess, validate(c
 router.post("/repositories/:repoId/branches", requireCodeAccess, validate(createBranchSchema), RepositoryController.createBranch);
 router.get("/repositories/:repoId/activity", requireCodeAccess, RepositoryController.getActivity);
 router.get("/repositories/:repoId/files", requireCodeAccess, RepositoryController.getFiles);
+router.get("/repositories/:repoId/file-content", requireCodeAccess, RepositoryController.getFileContent);
+router.get("/repositories/:repoId/readme", requireCodeAccess, RepositoryController.getReadme);
+router.post("/repositories/:repoId/sync", requireCodeAccess, RepositoryController.syncRepo);
+router.delete("/repositories/:repoId", requireCodeAccess, RepositoryController.deleteRepository);
 
 // Task Development Activity integration
 router.get("/tasks/:taskId/development", requireCodeAccess, RepositoryController.getTaskDevelopment);
