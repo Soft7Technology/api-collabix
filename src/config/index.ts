@@ -55,6 +55,9 @@ const envSchema = z
       .string()
       .default("SOFT7 HR <Soft7.in@gmail.com>"),
     COOKIE_DOMAIN: z.string().optional(),
+    GITHUB_CLIENT_ID: z.string().optional().default(""),
+    GITHUB_CLIENT_SECRET: z.string().optional().default(""),
+    GITHUB_REDIRECT_URI: z.string().optional().default(""),
   })
   .superRefine((env, context) => {
     if (env.NODE_ENV !== "production") return;

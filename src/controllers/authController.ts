@@ -292,6 +292,7 @@ export class AuthController {
       // Fetch complete user profile data
       const { rows } = await db.query(
         `SELECT u.id, u.name, u.email, u.avatar_color AS "avatarColor", u.initials, u.role_id AS "roleId", u.status, u.is_super_admin AS "isSuperAdmin", u.organization_id AS "organizationId", u.department_id AS "departmentId", u.can_create_tasks AS "canCreateTasks",
+                u.github_username AS "githubUsername",
                 r.name AS "roleName", r.rank AS "roleRank",
                 d.name AS "departmentName",
                 o.name AS "orgName", o.subscription_status AS "subscriptionStatus", o.trial_ends_at AS "trialEndsAt", o.is_approved AS "orgIsApproved", o.timezone AS "orgTimezone", o.created_at AS "orgCreatedAt"
@@ -325,6 +326,7 @@ export class AuthController {
         departmentName: user.departmentName,
         status: user.status,
         isSuperAdmin: user.isSuperAdmin,
+        githubUsername: user.githubUsername || null,
         organizationId: user.organizationId,
         organization: user.organizationId
           ? {

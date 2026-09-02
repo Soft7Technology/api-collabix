@@ -44,10 +44,12 @@ export async function authenticateUser(
     // Query DB to ensure user exists and is active, joining with roles and organizations
     const { rows } = await db.query(
       `SELECT u.id, u.email, u.role_id, u.status, u.department_id, u.is_super_admin, u.organization_id, u.can_create_tasks,
+              d.name as department_name,
               r.name as role_name, r.rank as role_rank,
               o.name as org_name, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone, o.created_at as org_created_at
        FROM users u
        JOIN roles r ON u.role_id = r.id
+       LEFT JOIN departments d ON u.department_id = d.id
        LEFT JOIN organizations o ON u.organization_id = o.id
        WHERE u.id = $1;`,
       [decoded.userId],
@@ -90,6 +92,7 @@ export async function authenticateUser(
       role_rank: user.role_rank,
       can_create_tasks: !!user.can_create_tasks,
       department_id: user.department_id,
+      department_name: user.department_name,
       is_super_admin: user.is_super_admin,
       organization_id: user.organization_id,
       organization: user.organization_id
@@ -109,4 +112,32 @@ export async function authenticateUser(
   } catch (error) {
     next(error);
   }
+}
+
+/**
+ * Guard middleware: Restricts Code & Repository section for Marketing and Sales departments.
+ */
+export function requireCodeAccess(req: Request, res: Response, next: NextFunction) {
+  if (
+    req.user?.is_super_admin ||
+    req.user?.role_name === "Admin" ||
+    req.user?.role_name === "Super Admin" ||
+    req.user?.role_rank === 1 ||
+    req.user?.permissions?.includes("admin:manage")
+  ) {
+    return next();
+  }
+
+  const dept = (req.user?.department_name || "").trim().toLowerCase();
+  if (dept === "marketing" || dept === "sales") {
+    res.status(403).json({
+      error: {
+        message: `The Code & Repository section is restricted for members of the ${req.user?.department_name} department.`,
+        status: 403,
+      },
+    });
+    return;
+  }
+
+  next();
 }

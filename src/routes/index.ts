@@ -8,6 +8,7 @@ import { DiscussionController } from "../controllers/discussionController.js";
 import { router as superRouter } from "./super.js";
 import { validate } from "../middleware/validate.js";
 import { requirePermission } from "../middleware/requirePermission.js";
+import { requireCodeAccess } from "../middleware/authenticate.js";
 import { AuthController } from "../controllers/authController.js";
 import { SystemController } from "../controllers/systemController.js";
 import {
@@ -26,7 +27,14 @@ import {
   updateSmtpSchema,
   testSmtpSchema,
   updateWhatsAppSchema,
+  createRepositorySchema,
+  recordCommitSchema,
+  createPRSchema,
+  createBranchSchema,
 } from "../schemas/index.js";
+import { RepositoryController } from "../controllers/repositoryController.js";
+import { GithubController } from "../controllers/githubController.js";
+
 
 const router = Router();
 
@@ -217,6 +225,30 @@ router.get("/monitoring/screenshots", MonitoringController.getScreenshots);
 router.delete("/monitoring/screenshots/:id", MonitoringController.deleteScreenshot);
 router.post("/monitoring/lunch/start", MonitoringController.startLunch);
 router.post("/monitoring/lunch/stop", MonitoringController.stopLunch);
+
+// Git Repositories routes (Restricted for Marketing & Sales)
+router.get("/repositories", requireCodeAccess, RepositoryController.getAll);
+router.post("/repositories", requireCodeAccess, validate(createRepositorySchema), RepositoryController.create);
+router.get("/repositories/:id/dashboard", requireCodeAccess, RepositoryController.getDashboard);
+router.get("/repositories/:id/branches", requireCodeAccess, RepositoryController.getBranches);
+router.get("/repositories/:id/commits", requireCodeAccess, RepositoryController.getCommits);
+router.post("/repositories/commits", requireCodeAccess, validate(recordCommitSchema), RepositoryController.recordCommit);
+router.get("/repositories/:repoId/pull-requests", requireCodeAccess, RepositoryController.getPullRequests);
+router.post("/repositories/:repoId/pull-requests", requireCodeAccess, validate(createPRSchema), RepositoryController.createPullRequest);
+router.post("/repositories/:repoId/branches", requireCodeAccess, validate(createBranchSchema), RepositoryController.createBranch);
+router.get("/repositories/:repoId/activity", requireCodeAccess, RepositoryController.getActivity);
+router.get("/repositories/:repoId/files", requireCodeAccess, RepositoryController.getFiles);
+
+// Task Development Activity integration
+router.get("/tasks/:taskId/development", requireCodeAccess, RepositoryController.getTaskDevelopment);
+
+// GitHub OAuth and Webhook routes
+router.get("/github/auth-url", requireCodeAccess, GithubController.getAuthUrl);
+router.get("/github/callback", GithubController.callback);
+router.get("/github/repos", requireCodeAccess, GithubController.getRepos);
+router.post("/github/disconnect", requireCodeAccess, GithubController.disconnect);
+router.post("/github/webhook", GithubController.handleWebhook);
+
 
 // Platform administration stays in this API and is guarded again inside each
 // controller action with an explicit is_super_admin check.
