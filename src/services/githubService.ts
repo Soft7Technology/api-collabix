@@ -301,13 +301,34 @@ export class GithubService {
       const res = await axios.get(url, { headers });
 
       if (Array.isArray(res.data)) {
-        return res.data.map((item: any) => ({
-          name: item.name,
-          type: item.type === "dir" ? "folder" : "file",
-          path: item.path,
-          size: item.size ? `${(item.size / 1024).toFixed(1)} KB` : undefined,
-          downloadUrl: item.download_url,
-        }));
+        const items = await Promise.all(
+          res.data.map(async (item: any) => {
+            let lastCommitMessage: string | undefined = undefined;
+            let updatedAt: string | undefined = undefined;
+            try {
+              const commitUrl = `https://api.github.com/repos/${owner}/${repo}/commits?path=${encodeURIComponent(item.path)}&per_page=1${branch ? `&sha=${branch}` : ""}`;
+              const commitRes = await axios.get(commitUrl, { headers });
+              if (commitRes.data && commitRes.data[0]) {
+                const c = commitRes.data[0];
+                lastCommitMessage = c.commit?.message?.split("\n")[0];
+                updatedAt = c.commit?.author?.date || c.commit?.committer?.date;
+              }
+            } catch {
+              // Ignore commit lookup errors and fall back gracefully
+            }
+
+            return {
+              name: item.name,
+              type: item.type === "dir" ? "folder" : "file",
+              path: item.path,
+              size: item.size ? `${(item.size / 1024).toFixed(1)} KB` : undefined,
+              downloadUrl: item.download_url,
+              lastCommitMessage,
+              updatedAt,
+            };
+          })
+        );
+        return items;
       } else {
         return [{
           name: res.data.name,
