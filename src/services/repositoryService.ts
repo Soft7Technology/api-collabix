@@ -288,24 +288,45 @@ export class RepositoryService {
   /**
    * Get Repository Dashboard info.
    */
-  public static async getDashboard(repoId: string, organizationId: string, branch?: string) {
+  public static async getDashboard(repoId: string, organizationId: string, branch?: string, userId?: string) {
     const repo = await this.getById(repoId, organizationId);
     if (!repo) return null;
 
-    let queryStr = `SELECT hash AS "commitHash", message, author_name AS "authorName", created_at AS "createdAt"
-                    FROM repository_commits
-                    WHERE repository_id = $1`;
-    const params: any[] = [repoId];
-    if (branch) {
-      queryStr += " AND (branch = $2 OR branch IS NULL)";
-      params.push(branch);
+    let latestCommit: any = null;
+
+    if (repo.githubOwner && repo.githubRepoName && userId) {
+      let token: string | null = null;
+      const { rows: userRows } = await db.query("SELECT github_token FROM users WHERE id = $1 LIMIT 1;", [userId]);
+      token = userRows[0]?.github_token || null;
+      const targetBranch = branch || repo.defaultBranch || "main";
+      const liveCommits = await GithubService.getRepoCommits(token, repo.githubOwner, repo.githubRepoName, targetBranch);
+      if (liveCommits.length > 0) {
+        latestCommit = {
+          commitHash: liveCommits[0].hash,
+          message: liveCommits[0].message,
+          authorName: liveCommits[0].authorName,
+          createdAt: liveCommits[0].date,
+        };
+      }
     }
-    queryStr += " ORDER BY created_at DESC LIMIT 1;";
-    const { rows: commits } = await db.query(queryStr, params);
+
+    if (!latestCommit) {
+      let queryStr = `SELECT hash AS "commitHash", message, author_name AS "authorName", to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "createdAt"
+                      FROM repository_commits
+                      WHERE repository_id = $1`;
+      const params: any[] = [repoId];
+      if (branch) {
+        queryStr += " AND (branch = $2 OR branch IS NULL)";
+        params.push(branch);
+      }
+      queryStr += " ORDER BY created_at DESC LIMIT 1;";
+      const { rows: commits } = await db.query(queryStr, params);
+      latestCommit = commits[0] || null;
+    }
 
     return {
       buildStatus: repo.buildStatus || "Passing",
-      latestCommit: commits[0] || null,
+      latestCommit,
     };
   }
 

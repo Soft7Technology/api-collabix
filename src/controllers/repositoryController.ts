@@ -67,7 +67,8 @@ export class RepositoryController {
 
       const { id } = req.params;
       const branch = req.query.branch as string | undefined;
-      const data = await RepositoryService.getDashboard(id, orgId!, branch);
+      const userId = req.user?.id;
+      const data = await RepositoryService.getDashboard(id, orgId!, branch, userId);
       if (!data) {
         res.status(404).json({ error: { message: "Repository not found.", status: 404 } });
         return;
