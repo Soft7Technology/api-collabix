@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from "express";
-import { GithubService } from "../services/githubService.js";
-import { RepositoryService } from "../services/repositoryService.js";
-import { db } from "../db/index.js";
-import { config } from "../config/index.js";
+import { GithubService } from "../../services/githubService.js";
+import { RepositoryService } from "../../services/repositoryService.js";
+import { db } from "../../db/index.js";
+import { config } from "../../config/index.js";
 
 export class GithubController {
   /**
@@ -51,11 +51,11 @@ export class GithubController {
       // Redirect the user back to the frontend dashboard or integrations page
       const frontendList = (config.FRONTEND_URL || "http://localhost:8001")
         .split(",")
-        .map((u) => u.trim())
+        .map((u: string) => u.trim())
         .filter(Boolean);
       const isDev = config.NODE_ENV === "development";
       const clientUrl =
-        (isDev ? frontendList.find((u) => u.includes("localhost:8001")) : frontendList[0]) ||
+        (isDev ? frontendList.find((u: string) => u.includes("localhost:8001")) : frontendList[0]) ||
         frontendList[0] ||
         "http://localhost:8001";
       const redirectTarget = `${clientUrl}/code?github=connected`;

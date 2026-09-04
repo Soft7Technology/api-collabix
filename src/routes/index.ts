@@ -1,16 +1,16 @@
 import { Router } from "express";
-import { ProjectController } from "../controllers/projectController.js";
-import { MonitoringController, upload } from "../controllers/monitoringController.js";
-import { TaskController } from "../controllers/taskController.js";
-import { MemberController } from "../controllers/memberController.js";
-import { DashboardController } from "../controllers/dashboardController.js";
-import { DiscussionController } from "../controllers/discussionController.js";
+import { ProjectController } from "../modules/projects/projectController.js";
+import { MonitoringController, upload } from "../modules/monitoring/monitoringController.js";
+import { TaskController } from "../modules/tasks/taskController.js";
+import { MemberController } from "../modules/team/memberController.js";
+import { DashboardController } from "../modules/dashboard/dashboardController.js";
+import { DiscussionController } from "../modules/discussion/discussionController.js";
 import { router as superRouter } from "./super.js";
 import { validate } from "../middleware/validate.js";
 import { requirePermission } from "../middleware/requirePermission.js";
 import { requireCodeAccess } from "../middleware/authenticate.js";
-import { AuthController } from "../controllers/authController.js";
-import { SystemController } from "../controllers/systemController.js";
+import { AuthController } from "../modules/auth/authController.js";
+import { SystemController } from "../modules/system/systemController.js";
 import {
   createProjectSchema,
   updateProjectSchema,
@@ -32,8 +32,8 @@ import {
   createPRSchema,
   createBranchSchema,
 } from "../schemas/index.js";
-import { RepositoryController } from "../controllers/repositoryController.js";
-import { GithubController } from "../controllers/githubController.js";
+import { RepositoryController } from "../modules/system/repositoryController.js";
+import { GithubController } from "../modules/system/githubController.js";
 
 
 const router = Router();
@@ -201,7 +201,7 @@ router.delete("/leaves/:id", DashboardController.deleteLeave);
 
 router.get("/activity", DashboardController.getActivity);
 
-import { UploadController, attachmentMulter } from "../controllers/uploadController.js";
+import { UploadController, attachmentMulter } from "../modules/system/uploadController.js";
 
 // Attachment Upload & Streaming Routes (Cloudflare R2 Proxy)
 router.post(

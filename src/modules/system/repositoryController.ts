@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
-import { RepositoryService } from "../services/repositoryService.js";
-import { GithubService } from "../services/githubService.js";
-import { db } from "../db/index.js";
+import { RepositoryService } from "../../services/repositoryService.js";
+import { GithubService } from "../../services/githubService.js";
+import { db } from "../../db/index.js";
 
 export class RepositoryController {
   /**

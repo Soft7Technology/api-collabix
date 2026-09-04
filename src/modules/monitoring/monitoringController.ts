@@ -126,37 +126,37 @@ export class MonitoringController {
         return;
       }
 
-      const userId = req.user.id;
-      const roleRank = req.user.role_rank ?? 4;
       const orgId = req.user.organization_id || null;
+      const { startDate, endDate, userId, limit } = req.query;
 
-      let result;
-      // Admins and Managers can see all screenshots in their organization
-      if (roleRank <= 2) {
-        result = await db.query(
-          `SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, sl.duration_seconds, u.name as user_name, u.email as user_email
-           FROM screen_logs sl
-           JOIN users u ON sl.user_id = u.id
-           WHERE u.organization_id IS NOT DISTINCT FROM $1
-             AND sl.screenshot_path != 'SESSION_STOPPED'
-           ORDER BY sl.captured_at DESC
-           LIMIT 50;`,
-          [orgId]
-        );
-      } else {
-        // Regular teammates can only retrieve their own logs
-        result = await db.query(
-          `SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, sl.duration_seconds, u.name as user_name, u.email as user_email
-           FROM screen_logs sl
-           JOIN users u ON sl.user_id = u.id
-           WHERE sl.user_id = $1
-             AND sl.screenshot_path != 'SESSION_STOPPED'
-           ORDER BY sl.captured_at DESC
-           LIMIT 50;`,
-          [userId]
-        );
+      const params: any[] = [orgId];
+      let queryStr = `
+        SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, sl.duration_seconds, sl.user_id, u.name as user_name, u.email as user_email
+        FROM screen_logs sl
+        JOIN users u ON sl.user_id = u.id
+        WHERE u.organization_id IS NOT DISTINCT FROM $1
+          AND sl.screenshot_path != 'SESSION_STOPPED'
+      `;
+
+      if (userId) {
+        params.push(userId);
+        queryStr += ` AND (sl.user_id = $${params.length} OR u.email = $${params.length})`;
       }
 
+      if (startDate) {
+        params.push(startDate);
+        queryStr += ` AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date >= $${params.length}::date`;
+      }
+
+      if (endDate) {
+        params.push(endDate);
+        queryStr += ` AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date <= $${params.length}::date`;
+      }
+
+      const queryLimit = limit ? Math.min(parseInt(limit as string, 10), 10000) : 5000;
+      queryStr += ` ORDER BY sl.captured_at DESC LIMIT ${queryLimit};`;
+
+      const result = await db.query(queryStr, params);
       res.status(200).json(result.rows);
     } catch (error) {
       next(error);

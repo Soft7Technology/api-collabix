@@ -62,17 +62,6 @@ export class MemberService {
       WHERE u.organization_id = $1
     `;
 
-    if (userCtx && userCtx.roleRank >= 3) {
-      const deptIdx = params.length + 1;
-      const userIdx = params.length + 2;
-      queryStr += ` AND (u.department_id = $${deptIdx} OR u.id = $${userIdx} OR u.id IN (
-        SELECT member_id FROM project_members WHERE project_id IN (
-          SELECT project_id FROM project_members WHERE member_id = $${userIdx}
-        )
-      ))`;
-      params.push(userCtx.departmentId || null, userCtx.id);
-    }
-
     const { rows } = await db.query(queryStr, params);
     return rows.map((r) => {
       const isRecent = r.latest_log_time && (Date.now() - new Date(r.latest_log_time).getTime() < 7 * 60 * 1000);
