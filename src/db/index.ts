@@ -12,10 +12,34 @@ const migrationsDir = path.resolve(__dirname, "../../migrations");
 
 export const pool = new Pool({
   connectionString: config.DATABASE_URL,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000,
+});
+
+pool.on("error", (err) => {
+  console.error("⚠️ Idle PostgreSQL client socket error handled:", err.message);
 });
 
 export const db = {
-  query: (text: string, params?: any[]) => pool.query(text, params),
+  query: async (text: string, params?: any[]) => {
+    try {
+      return await pool.query(text, params);
+    } catch (err: any) {
+      if (
+        err.code === "ECONNRESET" ||
+        err.code === "57P01" ||
+        err.message?.includes("ECONNRESET") ||
+        err.message?.includes("Connection terminated")
+      ) {
+        console.warn("🔄 Database socket reset detected. Retrying query on new client connection...");
+        return await pool.query(text, params);
+      }
+      throw err;
+    }
+  },
 };
 
 export async function runMigrations() {
