@@ -1,15 +1,16 @@
 import { Router } from "express";
-import { ProjectController } from "../modules/projects/projectController.js";
-import { MonitoringController, upload } from "../modules/monitoring/monitoringController.js";
-import { TaskController } from "../modules/tasks/taskController.js";
-import { MemberController } from "../modules/team/memberController.js";
-import { DashboardController } from "../modules/dashboard/dashboardController.js";
-import { DiscussionController } from "../modules/discussion/discussionController.js";
+import { ProjectController } from "../controllers/projectController.js";
+import { MonitoringController, upload } from "../controllers/monitoringController.js";
+import { TaskController } from "../controllers/taskController.js";
+import { MemberController } from "../controllers/memberController.js";
+import { DashboardController } from "../controllers/dashboardController.js";
+import { DiscussionController } from "../controllers/discussionController.js";
 import { router as superRouter } from "./super.js";
 import { validate } from "../middleware/validate.js";
 import { requirePermission } from "../middleware/requirePermission.js";
-import { AuthController } from "../modules/auth/authController.js";
-import { SystemController } from "../modules/system/systemController.js";
+import { requireCodeAccess } from "../middleware/authenticate.js";
+import { AuthController } from "../controllers/authController.js";
+import { SystemController } from "../controllers/systemController.js";
 import {
   createProjectSchema,
   updateProjectSchema,
@@ -26,7 +27,14 @@ import {
   updateSmtpSchema,
   testSmtpSchema,
   updateWhatsAppSchema,
+  createRepositorySchema,
+  recordCommitSchema,
+  createPRSchema,
+  createBranchSchema,
 } from "../schemas/index.js";
+import { RepositoryController } from "../controllers/repositoryController.js";
+import { GithubController } from "../controllers/githubController.js";
+
 
 const router = Router();
 
@@ -193,7 +201,7 @@ router.delete("/leaves/:id", DashboardController.deleteLeave);
 
 router.get("/activity", DashboardController.getActivity);
 
-import { UploadController, attachmentMulter } from "../modules/system/uploadController.js";
+import { UploadController, attachmentMulter } from "../controllers/uploadController.js";
 
 // Attachment Upload & Streaming Routes (Cloudflare R2 Proxy)
 router.post(
@@ -202,23 +210,6 @@ router.post(
   UploadController.uploadAttachment,
 );
 router.get("/upload/file/*", UploadController.streamFile);
-
-import { RepositoryController } from "../modules/repository/repositoryController.js";
-
-// Repository & Code Dashboard routes
-router.get("/repositories", RepositoryController.getAll);
-router.post("/repositories", RepositoryController.create);
-router.get("/repositories/:id/dashboard", RepositoryController.getDashboard);
-router.get("/repositories/:id/branches", RepositoryController.getBranches);
-router.get("/repositories/:id/commits", RepositoryController.getCommits);
-router.post("/repositories/commits", RepositoryController.recordCommit);
-router.get("/tasks/:taskId/development", RepositoryController.getTaskDevelopment);
-router.get("/repositories/:id/pull-requests", RepositoryController.getPullRequests);
-router.post("/repositories/:id/pull-requests", RepositoryController.createPullRequest);
-router.post("/repositories/:id/branches", RepositoryController.createBranch);
-router.get("/repositories/:id/activity", RepositoryController.getActivity);
-router.get("/repositories/:id/files", RepositoryController.getFiles);
-
 
 // Screen monitoring routes
 router.post(
@@ -234,6 +225,34 @@ router.get("/monitoring/screenshots", MonitoringController.getScreenshots);
 router.delete("/monitoring/screenshots/:id", MonitoringController.deleteScreenshot);
 router.post("/monitoring/lunch/start", MonitoringController.startLunch);
 router.post("/monitoring/lunch/stop", MonitoringController.stopLunch);
+
+// Git Repositories routes (Restricted for Marketing & Sales)
+router.get("/repositories", requireCodeAccess, RepositoryController.getAll);
+router.post("/repositories", requireCodeAccess, validate(createRepositorySchema), RepositoryController.create);
+router.get("/repositories/:id/dashboard", requireCodeAccess, RepositoryController.getDashboard);
+router.get("/repositories/:id/branches", requireCodeAccess, RepositoryController.getBranches);
+router.get("/repositories/:id/commits", requireCodeAccess, RepositoryController.getCommits);
+router.post("/repositories/commits", requireCodeAccess, validate(recordCommitSchema), RepositoryController.recordCommit);
+router.get("/repositories/:repoId/pull-requests", requireCodeAccess, RepositoryController.getPullRequests);
+router.post("/repositories/:repoId/pull-requests", requireCodeAccess, validate(createPRSchema), RepositoryController.createPullRequest);
+router.post("/repositories/:repoId/branches", requireCodeAccess, validate(createBranchSchema), RepositoryController.createBranch);
+router.get("/repositories/:repoId/activity", requireCodeAccess, RepositoryController.getActivity);
+router.get("/repositories/:repoId/files", requireCodeAccess, RepositoryController.getFiles);
+router.get("/repositories/:repoId/file-content", requireCodeAccess, RepositoryController.getFileContent);
+router.get("/repositories/:repoId/readme", requireCodeAccess, RepositoryController.getReadme);
+router.post("/repositories/:repoId/sync", requireCodeAccess, RepositoryController.syncRepo);
+router.delete("/repositories/:repoId", requireCodeAccess, RepositoryController.deleteRepository);
+
+// Task Development Activity integration
+router.get("/tasks/:taskId/development", requireCodeAccess, RepositoryController.getTaskDevelopment);
+
+// GitHub OAuth and Webhook routes
+router.get("/github/auth-url", requireCodeAccess, GithubController.getAuthUrl);
+router.get("/github/callback", GithubController.callback);
+router.get("/github/repos", requireCodeAccess, GithubController.getRepos);
+router.post("/github/disconnect", requireCodeAccess, GithubController.disconnect);
+router.post("/github/webhook", GithubController.handleWebhook);
+
 
 // Platform administration stays in this API and is guarded again inside each
 // controller action with an explicit is_super_admin check.

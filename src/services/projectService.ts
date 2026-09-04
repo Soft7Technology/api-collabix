@@ -23,8 +23,14 @@ export class ProjectService {
       return [];
     }
 
-    if (!userCtx || userCtx.roleRank <= 2) {
-      // Admin, Manager or no context: return all projects for this organization
+    const isAdmin =
+      !userCtx ||
+      userCtx.isSuperAdmin ||
+      userCtx.roleRank === 1 ||
+      (userCtx.roleName && userCtx.roleName.toLowerCase() === "admin");
+
+    if (isAdmin) {
+      // Organization Admin / Superadmin: return all projects for this organization
       const { rows } = await db.query(
         `
         SELECT p.*, COALESCE(array_agg(pm.member_id) FILTER (WHERE pm.member_id IS NOT NULL), '{}') AS "memberIds"
@@ -49,8 +55,7 @@ export class ProjectService {
       }));
     }
 
-    // Team Leader, HR, Teammate: projects belonging to user's department OR where user is a project member
-    const deptId = userCtx.departmentId || null;
+    // For all regular users: only return projects where the user is an explicit assigned member
     const { rows } = await db.query(
       `
       SELECT p.*, COALESCE(array_agg(pm.member_id) FILTER (WHERE pm.member_id IS NOT NULL), '{}') AS "memberIds"
@@ -58,10 +63,9 @@ export class ProjectService {
       LEFT JOIN project_members pm ON p.id = pm.project_id
       WHERE p.organization_id = $2
       GROUP BY p.id
-      HAVING ($3::uuid IS NOT NULL AND p.department_id = $3::uuid)
-          OR ($1 = ANY(COALESCE(array_agg(pm.member_id) FILTER (WHERE pm.member_id IS NOT NULL), '{}')));
+      HAVING ($1 = ANY(COALESCE(array_agg(pm.member_id) FILTER (WHERE pm.member_id IS NOT NULL), '{}')));
     `,
-      [userCtx.id, userCtx.organizationId || null, deptId],
+      [userCtx.id, userCtx.organizationId || null],
     );
     return rows.map((r) => ({
       id: r.id,
