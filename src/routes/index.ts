@@ -217,6 +217,7 @@ router.post(
   upload.single("screenshot"),
   MonitoringController.uploadScreenshot,
 );
+router.post("/monitoring/start", MonitoringController.startMonitoring);
 router.post("/monitoring/stop", MonitoringController.stopMonitoring);
 router.post("/monitoring/session/start", MonitoringController.startSession);
 router.post("/monitoring/session/stop", MonitoringController.stopSession);

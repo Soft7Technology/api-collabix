@@ -163,6 +163,36 @@ export class MonitoringController {
     }
   }
 
+  static async startMonitoring(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "Unauthorized", status: 401 } });
+        return;
+      }
+      const userId = req.user.id;
+
+      // Anchor clock-in time for today if no logs exist yet
+      const todayLogs = await db.query(
+        `SELECT id FROM screen_logs 
+         WHERE user_id = $1 AND (captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date 
+         LIMIT 1;`,
+        [userId]
+      );
+
+      if (todayLogs.rows.length === 0) {
+        await db.query(
+          `INSERT INTO screen_logs (user_id, screenshot_path, status, duration_seconds)
+           VALUES ($1, 'SESSION_STARTED', 'active', 0);`,
+          [userId]
+        );
+      }
+
+      res.status(200).json({ success: true, message: "Monitoring session started." });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async stopMonitoring(req: Request, res: Response, next: NextFunction) {
     try {
       if (!req.user) {

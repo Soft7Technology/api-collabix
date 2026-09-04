@@ -55,7 +55,9 @@ export class MemberService {
         (SELECT captured_at FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_time,
         (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status != 'lunch' AND ${dateCondition}) as today_seconds,
         (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'lunch' AND ${dateCondition}) as today_lunch_seconds,
-        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'inactive' AND ${dateCondition}) as today_idle_seconds
+        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'inactive' AND ${dateCondition}) as today_idle_seconds,
+        (SELECT MIN(sl.captured_at) FROM screen_logs sl WHERE sl.user_id = u.id AND ${dateCondition}) as first_clock_in,
+        (SELECT MAX(sl.captured_at) FROM screen_logs sl WHERE sl.user_id = u.id AND ${dateCondition}) as last_clock_out
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
       LEFT JOIN roles sys_role ON u.role_id = sys_role.id
@@ -84,6 +86,10 @@ export class MemberService {
         todaySeconds: r.today_seconds || 0,
         todayLunchSeconds: r.today_lunch_seconds || 0,
         todayIdleSeconds: r.today_idle_seconds || 0,
+        clockInTime: r.first_clock_in ? new Date(r.first_clock_in).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }) : null,
+        clockOutTime: r.last_clock_out ? new Date(r.last_clock_out).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }) : null,
+        firstClockIn: r.first_clock_in || null,
+        lastClockOut: r.last_clock_out || null,
         canCreateTasks: !!r.can_create_tasks,
       };
     });
@@ -107,7 +113,10 @@ export class MemberService {
         (SELECT screenshot_path FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_path,
         (SELECT captured_at FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_time,
         (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status != 'lunch' AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as today_seconds,
-        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'lunch' AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as today_lunch_seconds
+        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'lunch' AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as today_lunch_seconds,
+        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'inactive' AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as today_idle_seconds,
+        (SELECT MIN(sl.captured_at) FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as first_clock_in,
+        (SELECT MAX(sl.captured_at) FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as last_clock_out
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
       LEFT JOIN roles sys_role ON u.role_id = sys_role.id
@@ -142,6 +151,11 @@ export class MemberService {
       status: status,
       todaySeconds: r.today_seconds || 0,
       todayLunchSeconds: r.today_lunch_seconds || 0,
+      todayIdleSeconds: r.today_idle_seconds || 0,
+      clockInTime: r.first_clock_in ? new Date(r.first_clock_in).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }) : null,
+      clockOutTime: r.last_clock_out ? new Date(r.last_clock_out).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }) : null,
+      firstClockIn: r.first_clock_in || null,
+      lastClockOut: r.last_clock_out || null,
       canCreateTasks: !!r.can_create_tasks,
     };
   }
