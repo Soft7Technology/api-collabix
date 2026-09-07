@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { db } from "../db/index.js";
+import { db } from "../../db/index.js";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
@@ -38,7 +38,7 @@ export const upload = multer({
   }
 });
 
-import { uploadToR2, deleteFromR2 } from "../services/storageService.js";
+import { uploadToR2, deleteFromR2 } from "../../services/storageService.js";
 
 export class MonitoringController {
   static async uploadScreenshot(req: Request, res: Response, next: NextFunction) {
@@ -75,6 +75,7 @@ export class MonitoringController {
       }
 
       const statusParam = (req.body?.status === "inactive" || req.body?.status === "idle") ? "inactive" : "active";
+      const capturedAtParam = req.body?.captured_at ? new Date(req.body.captured_at) : new Date();
 
       // Calculate exact duration since previous capture
       const prevLogRes = await db.query(
@@ -85,19 +86,24 @@ export class MonitoringController {
       if (prevLogRes.rows.length > 0) {
         const prev = prevLogRes.rows[0];
         if (prev.status === "active" || prev.status === "inactive") {
-          const elapsed = Date.now() - new Date(prev.captured_at).getTime();
-          if (elapsed > 0 && elapsed <= 10 * 60 * 1000) {
-            durationSeconds = Math.min(300, Math.floor(elapsed / 1000));
+          const elapsed = capturedAtParam.getTime() - new Date(prev.captured_at).getTime();
+          if (elapsed > 0) {
+            if (elapsed <= 10 * 60 * 1000) {
+              durationSeconds = Math.min(300, Math.floor(elapsed / 1000));
+            } else if (elapsed <= 30 * 60 * 1000) {
+              // Background throttling compensation: credit standard 5 minutes (300 seconds) if less than 30 minutes elapsed
+              durationSeconds = 300;
+            }
           }
         }
       }
 
       // Insert log into the database
       const result = await db.query(
-        `INSERT INTO screen_logs (user_id, screenshot_path, status, duration_seconds)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO screen_logs (user_id, screenshot_path, status, duration_seconds, captured_at)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING id, captured_at;`,
-        [userId, screenshotPath, statusParam, durationSeconds]
+        [userId, screenshotPath, statusParam, durationSeconds, capturedAtParam]
       );
 
       res.status(200).json({
@@ -120,38 +126,68 @@ export class MonitoringController {
         return;
       }
 
-      const userId = req.user.id;
-      const roleRank = req.user.role_rank ?? 4;
       const orgId = req.user.organization_id || null;
+      const { startDate, endDate, userId, limit } = req.query;
 
-      let result;
-      // Admins and Managers can see all screenshots in their organization
-      if (roleRank <= 2) {
-        result = await db.query(
-          `SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, sl.duration_seconds, u.name as user_name, u.email as user_email
-           FROM screen_logs sl
-           JOIN users u ON sl.user_id = u.id
-           WHERE u.organization_id IS NOT DISTINCT FROM $1
-             AND sl.screenshot_path != 'SESSION_STOPPED'
-           ORDER BY sl.captured_at DESC
-           LIMIT 50;`,
-          [orgId]
-        );
-      } else {
-        // Regular teammates can only retrieve their own logs
-        result = await db.query(
-          `SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, sl.duration_seconds, u.name as user_name, u.email as user_email
-           FROM screen_logs sl
-           JOIN users u ON sl.user_id = u.id
-           WHERE sl.user_id = $1
-             AND sl.screenshot_path != 'SESSION_STOPPED'
-           ORDER BY sl.captured_at DESC
-           LIMIT 50;`,
+      const params: any[] = [orgId];
+      let queryStr = `
+        SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, sl.duration_seconds, sl.user_id, u.name as user_name, u.email as user_email
+        FROM screen_logs sl
+        JOIN users u ON sl.user_id = u.id
+        WHERE u.organization_id IS NOT DISTINCT FROM $1
+          AND sl.screenshot_path != 'SESSION_STOPPED'
+      `;
+
+      if (userId) {
+        params.push(userId);
+        queryStr += ` AND (sl.user_id = $${params.length} OR u.email = $${params.length})`;
+      }
+
+      if (startDate) {
+        params.push(startDate);
+        queryStr += ` AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date >= $${params.length}::date`;
+      }
+
+      if (endDate) {
+        params.push(endDate);
+        queryStr += ` AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date <= $${params.length}::date`;
+      }
+
+      const queryLimit = limit ? Math.min(parseInt(limit as string, 10), 10000) : 5000;
+      queryStr += ` ORDER BY sl.captured_at DESC LIMIT ${queryLimit};`;
+
+      const result = await db.query(queryStr, params);
+      res.status(200).json(result.rows);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async startMonitoring(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "Unauthorized", status: 401 } });
+        return;
+      }
+      const userId = req.user.id;
+
+      // Anchor clock-in time for today if no logs exist yet
+      const todayLogs = await db.query(
+        `SELECT id FROM screen_logs 
+         WHERE user_id = $1 AND (captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date 
+         LIMIT 1;`,
+        [userId]
+      );
+
+      if (todayLogs.rows.length === 0) {
+        await db.query(
+          `INSERT INTO screen_logs (user_id, screenshot_path, status, duration_seconds)
+           VALUES ($1, 'SESSION_STARTED', 'active', 0);`,
           [userId]
         );
       }
 
-      res.status(200).json(result.rows);
+      res.status(200).json({ success: true, message: "Monitoring session started." });
     } catch (error) {
       next(error);
     }
@@ -268,7 +304,12 @@ export class MonitoringController {
       );
       
       res.status(200).json({ success: true, message: "Heartbeat acknowledged." });
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === "23503") { // Foreign key constraint violation (session doesn't exist)
+        console.warn(`[API Heartbeat] Rejected heartbeat: session_id ${req.body.session_id} does not exist.`);
+        res.status(404).json({ error: { message: "Session not found.", code: "SESSION_NOT_FOUND", status: 404 } });
+        return;
+      }
       next(error);
     }
   }

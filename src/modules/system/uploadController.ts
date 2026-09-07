@@ -3,7 +3,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
-import { uploadToR2, r2Client } from "../services/storageService.js";
+import { uploadToR2, r2Client } from "../../services/storageService.js";
 
 const storage = multer.memoryStorage();
 
