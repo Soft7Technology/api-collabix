@@ -170,6 +170,9 @@ const mockDeployments: DeploymentItem[] = [
 ];
 
 export class RepositoryController {
+  static deleteRepository(arg0: string, requireCodeAccess: (req: Request, res: Response, next: NextFunction) => void, deleteRepository: any) {
+    throw new Error("Method not implemented.");
+  }
   static async getAll(req: Request, res: Response, next: NextFunction) {
     try {
       const { projectId } = req.query;

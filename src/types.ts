@@ -30,6 +30,7 @@ declare global {
         role_rank?: number;
         can_create_tasks?: boolean;
         department_id?: string | null;
+        department_name?: string | null;
         is_super_admin: boolean;
         organization_id?: string | null;
         organization?: {

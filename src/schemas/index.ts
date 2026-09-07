@@ -188,3 +188,52 @@ export const updateWhatsAppSchema = z.object({
   }),
 });
 
+// Repository and Git Schemas
+export const createRepositorySchema = z.object({
+  body: z.object({
+    name: z.string().min(1, "Name is required"),
+    projectId: z.string().min(1, "Project ID is required"),
+    defaultBranch: z.string().optional().default("main"),
+    visibility: z.string().optional().default("private"),
+    repoUrl: z.string().optional().default(""),
+    description: z.string().optional().default(""),
+    githubOwner: z.string().optional(),
+    githubRepoName: z.string().optional(),
+  }),
+});
+
+export const recordCommitSchema = z.object({
+  body: z.object({
+    repoId: z.string().optional(),
+    commitHash: z.string().optional(),
+    message: z.string().min(1, "Commit message is required"),
+    authorName: z.string().optional(),
+    branch: z.string().optional().default("main"),
+    taskId: z.string().optional(),
+  }),
+});
+
+export const createPRSchema = z.object({
+  params: z.object({
+    repoId: z.string(),
+  }),
+  body: z.object({
+    title: z.string().min(1, "PR title is required"),
+    sourceBranch: z.string().min(1, "Source branch is required"),
+    targetBranch: z.string().min(1, "Target branch is required"),
+    taskId: z.string().optional(),
+    description: z.string().optional().default(""),
+  }),
+});
+
+export const createBranchSchema = z.object({
+  params: z.object({
+    repoId: z.string(),
+  }),
+  body: z.object({
+    name: z.string().min(1, "Branch name is required"),
+    targetBranch: z.string().optional(),
+  }),
+});
+
+
