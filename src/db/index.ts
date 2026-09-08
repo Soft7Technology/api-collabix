@@ -95,6 +95,7 @@ export async function runMigrations() {
       ALTER TABLE projects ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id) ON DELETE SET NULL;
       ALTER TABLE organizations ADD COLUMN IF NOT EXISTS screenshot_interval INT DEFAULT 300;
       ALTER TABLE organizations ADD COLUMN IF NOT EXISTS screenshots_blurred BOOLEAN DEFAULT false;
+      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS plan VARCHAR(50) DEFAULT 'Pro';
       
       CREATE TABLE IF NOT EXISTS monitoring_sessions (
         id VARCHAR PRIMARY KEY,
