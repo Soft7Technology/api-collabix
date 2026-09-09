@@ -31,9 +31,12 @@ import {
   recordCommitSchema,
   createPRSchema,
   createBranchSchema,
+  createMeetingSchema,
+  updateMeetingSchema,
 } from "../schemas/index.js";
 import { RepositoryController } from "../modules/system/repositoryController.js";
 import { GithubController } from "../modules/system/githubController.js";
+import { MeetingController } from "../modules/meeting/meetingController.js";
 
 
 const router = Router();
@@ -188,11 +191,20 @@ router.delete(
   DashboardController.deleteSprint,
 );
 
-router.get("/meetings", DashboardController.getMeetings);
-router.get("/meetings/:id", DashboardController.getMeetingById);
-router.post("/meetings", DashboardController.createMeeting);
-router.patch("/meetings/:id", DashboardController.updateMeeting);
-router.delete("/meetings/:id", DashboardController.deleteMeeting);
+router.get("/meetings", MeetingController.getMeetings);
+router.get("/meetings/:id", MeetingController.getMeetingById);
+router.post(
+  "/meetings",
+  validate(createMeetingSchema),
+  MeetingController.createMeeting,
+);
+router.post("/meetings/instant", MeetingController.createInstantMeeting);
+router.patch(
+  "/meetings/:id",
+  validate(updateMeetingSchema),
+  MeetingController.updateMeeting,
+);
+router.delete("/meetings/:id", MeetingController.deleteMeeting);
 
 router.get("/leaves", DashboardController.getLeaves);
 router.post("/leaves", DashboardController.createLeave);
