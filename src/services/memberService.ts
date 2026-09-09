@@ -64,6 +64,30 @@ export class MemberService {
       WHERE u.organization_id = $1
     `;
 
+    const isAdmin =
+      !userCtx ||
+      userCtx.isSuperAdmin ||
+      userCtx.roleRank <= 1 ||
+      (userCtx.roleName && userCtx.roleName.toLowerCase() === "admin") ||
+      (userCtx.roleName && userCtx.roleName.toLowerCase() === "super admin");
+
+    if (!isAdmin && userCtx?.id) {
+      params.push(userCtx.id);
+      const userIdx = params.length;
+      queryStr += ` AND (
+        u.id = $${userIdx}
+        OR u.id IN (
+          SELECT pm2.member_id 
+          FROM project_members pm2 
+          WHERE pm2.project_id IN (
+            SELECT pm1.project_id 
+            FROM project_members pm1 
+            WHERE pm1.member_id = $${userIdx}
+          )
+        )
+      )`;
+    }
+
     const { rows } = await db.query(queryStr, params);
     return rows.map((r) => {
       const isRecent = r.latest_log_time && (Date.now() - new Date(r.latest_log_time).getTime() < 7 * 60 * 1000);
@@ -127,6 +151,27 @@ export class MemberService {
     if (organizationId && !userCtx?.isSuperAdmin) {
       queryStr += ` AND (u.organization_id = $2 OR u.organization_id IS NULL)`;
       params.push(organizationId);
+    }
+
+    const isTargetAdmin =
+      !userCtx ||
+      userCtx.isSuperAdmin ||
+      userCtx.roleRank <= 1 ||
+      (userCtx.roleName && userCtx.roleName.toLowerCase() === "admin") ||
+      (userCtx.roleName && userCtx.roleName.toLowerCase() === "super admin");
+
+    if (!isTargetAdmin && userCtx?.id && userCtx.id !== id) {
+      params.push(userCtx.id);
+      const userIdx = params.length;
+      queryStr += ` AND u.id IN (
+        SELECT pm2.member_id 
+        FROM project_members pm2 
+        WHERE pm2.project_id IN (
+          SELECT pm1.project_id 
+          FROM project_members pm1 
+          WHERE pm1.member_id = $${userIdx}
+        )
+      )`;
     }
 
     const { rows } = await db.query(queryStr, params);
