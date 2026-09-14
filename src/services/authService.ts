@@ -37,7 +37,7 @@ export class AuthService {
       `SELECT u.id, u.name, u.email, u.password_hash, u.role_id, u.status, u.is_super_admin, u.organization_id, u.department_id, u.can_create_tasks,
               r.name as role_name, r.rank as role_rank,
               d.name as department_name,
-              o.name as org_name, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone as org_timezone 
+              o.name as org_name, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone as org_timezone, o.created_at as org_created_at 
        FROM users u
        JOIN roles r ON u.role_id = r.id
        LEFT JOIN departments d ON u.department_id = d.id
@@ -93,6 +93,7 @@ export class AuthService {
             subscriptionStatus: user.subscription_status,
             trialEndsAt: user.trial_ends_at,
             isApproved: user.org_is_approved,
+            createdAt: user.org_created_at,
           }
         : null,
       permissions,
@@ -193,7 +194,7 @@ export class AuthService {
         `SELECT u.id, u.name, u.email, u.role_id, u.is_super_admin, u.organization_id, u.department_id,
                 r.name as role_name, r.rank as role_rank,
                 d.name as department_name,
-                o.name as org_name, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone as org_timezone
+                o.name as org_name, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone as org_timezone, o.created_at as org_created_at
          FROM users u
          JOIN roles r ON u.role_id = r.id
          LEFT JOIN departments d ON u.department_id = d.id
@@ -241,6 +242,7 @@ export class AuthService {
               subscriptionStatus: user.subscription_status,
               trialEndsAt: user.trial_ends_at,
               isApproved: user.org_is_approved,
+              createdAt: user.org_created_at,
             }
           : null,
         permissions,
@@ -293,7 +295,7 @@ export class AuthService {
         `SELECT u.id, u.name, u.email, u.role_id, u.status, u.is_super_admin, u.organization_id, u.department_id,
                 r.name as role_name, r.rank as role_rank,
                 d.name as department_name,
-                o.name as org_name, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone as org_timezone
+                o.name as org_name, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone as org_timezone, o.created_at as org_created_at
          FROM users u
          JOIN roles r ON u.role_id = r.id
          LEFT JOIN departments d ON u.department_id = d.id
@@ -354,6 +356,7 @@ export class AuthService {
               subscriptionStatus: user.subscription_status,
               trialEndsAt: user.trial_ends_at,
               isApproved: user.org_is_approved,
+              createdAt: user.org_created_at,
             }
           : null,
         permissions,
@@ -442,11 +445,12 @@ export class AuthService {
       await client.query("BEGIN;");
 
       // 1. Create Organization (5-day free trial, full feature access)
+      const trialDays = process.env.TRIAL_DURATION_DAYS || "5";
       const orgResult = await client.query(
         `INSERT INTO organizations (name, phone, subscription_status, trial_ends_at, is_approved)
-         VALUES ($1, $2, 'TRIALING', NOW() + INTERVAL '5 days', TRUE)
-         RETURNING id, name, subscription_status, trial_ends_at, is_approved;`,
-        [companyTrimmed, phone.trim()],
+         VALUES ($1, $2, 'TRIALING', NOW() + CAST($3 || ' days' AS INTERVAL), TRUE)
+         RETURNING id, name, subscription_status, trial_ends_at, is_approved, created_at;`,
+        [companyTrimmed, phone.trim(), trialDays],
       );
       const organization = orgResult.rows[0];
 
@@ -777,8 +781,6 @@ export class AuthService {
 } 
 
 else {
-  console.log("cancelling subscription")
-
   await pool.query(
   `UPDATE subscriptions
    SET status = 'cancelled',

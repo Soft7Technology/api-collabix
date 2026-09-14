@@ -188,3 +188,105 @@ export const updateWhatsAppSchema = z.object({
   }),
 });
 
+// Repository and Git Schemas
+export const createRepositorySchema = z.object({
+  body: z.object({
+    name: z.string().min(1, "Name is required"),
+    projectId: z.string().min(1, "Project ID is required"),
+    defaultBranch: z.string().optional().default("main"),
+    visibility: z.string().optional().default("private"),
+    repoUrl: z.string().optional().default(""),
+    description: z.string().optional().default(""),
+    githubOwner: z.string().optional(),
+    githubRepoName: z.string().optional(),
+  }),
+});
+
+export const recordCommitSchema = z.object({
+  body: z.object({
+    repoId: z.string().optional(),
+    commitHash: z.string().optional(),
+    message: z.string().min(1, "Commit message is required"),
+    authorName: z.string().optional(),
+    branch: z.string().optional().default("main"),
+    taskId: z.string().optional(),
+  }),
+});
+
+export const createPRSchema = z.object({
+  params: z.object({
+    repoId: z.string(),
+  }),
+  body: z.object({
+    title: z.string().min(1, "PR title is required"),
+    sourceBranch: z.string().min(1, "Source branch is required"),
+    targetBranch: z.string().min(1, "Target branch is required"),
+    taskId: z.string().optional(),
+    description: z.string().optional().default(""),
+  }),
+});
+
+export const createBranchSchema = z.object({
+  params: z.object({
+    repoId: z.string(),
+  }),
+  body: z.object({
+    name: z.string().min(1, "Branch name is required"),
+    targetBranch: z.string().optional(),
+  }),
+});
+
+// Meeting schemas
+export const createMeetingSchema = z.object({
+  body: z.object({
+    title: z.string().min(1, "Title is required"),
+    projectId: z.string().nullable().optional(),
+    platform: z.string().optional().default("teams"),
+    meetingLink: z.string().optional().default(""),
+    meetingCode: z.string().optional().default(""),
+    passcode: z.string().optional().default(""),
+    hostId: z.string().optional(),
+    teamDepartment: z.string().optional().default(""),
+    description: z.string().optional().default(""),
+    agenda: z.array(z.string()).optional().default([]),
+    date: z.string().min(1, "Date is required"),
+    startTime: z.string().min(1, "Start time is required"),
+    endTime: z.string().min(1, "End time is required"),
+    durationMinutes: z.number().optional().default(30),
+    timezone: z.string().optional().default("Asia/Kolkata"),
+    status: z.enum(["upcoming", "live", "completed", "cancelled"]).optional().default("upcoming"),
+    recordingUrl: z.string().optional().default(""),
+    notes: z.string().optional().default(""),
+    attendees: z.array(z.string()).optional().default([]),
+  }),
+});
+
+export const updateMeetingSchema = z.object({
+  params: z.object({
+    id: z.string(),
+  }),
+  body: z.object({
+    title: z.string().optional(),
+    projectId: z.string().nullable().optional(),
+    platform: z.string().optional(),
+    meetingLink: z.string().optional(),
+    meetingCode: z.string().optional(),
+    passcode: z.string().optional(),
+    hostId: z.string().optional(),
+    teamDepartment: z.string().optional(),
+    description: z.string().optional(),
+    agenda: z.array(z.string()).optional(),
+    date: z.string().optional(),
+    startTime: z.string().optional(),
+    endTime: z.string().optional(),
+    durationMinutes: z.number().optional(),
+    timezone: z.string().optional(),
+    status: z.enum(["upcoming", "live", "completed", "cancelled"]).optional(),
+    recordingUrl: z.string().optional(),
+    notes: z.string().optional(),
+    attendees: z.array(z.string()).optional(),
+  }),
+});
+
+
+

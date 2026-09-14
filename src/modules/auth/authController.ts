@@ -1,15 +1,15 @@
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
-import { AuthService, hashToken } from "../services/authService.js";
-import { RazorpayService } from "../services/razorpayService.js";
+import { AuthService, hashToken } from "../../services/authService.js";
+import { RazorpayService } from "../../services/razorpayService.js";
 import {
   generateAccessToken,
   generateRefreshToken,
   comparePassword,
   hashPassword,
-} from "../utils/auth.js";
-import { pool, db } from "../db/index.js";
-import { config } from "../config/index.js";
+} from "../../utils/auth.js";
+import { db } from "../../db/index.js";
+import { config } from "../../config/index.js";
 
 // Cookie configurations
 const cookieOptions = {
@@ -292,9 +292,10 @@ export class AuthController {
       // Fetch complete user profile data
       const { rows } = await db.query(
         `SELECT u.id, u.name, u.email, u.avatar_color AS "avatarColor", u.initials, u.role_id AS "roleId", u.status, u.is_super_admin AS "isSuperAdmin", u.organization_id AS "organizationId", u.department_id AS "departmentId", u.can_create_tasks AS "canCreateTasks",
+                u.github_username AS "githubUsername",
                 r.name AS "roleName", r.rank AS "roleRank",
                 d.name AS "departmentName",
-                o.name AS "orgName", o.subscription_status AS "subscriptionStatus", o.trial_ends_at AS "trialEndsAt", o.is_approved AS "orgIsApproved", o.timezone AS "orgTimezone"
+                o.name AS "orgName", o.subscription_status AS "subscriptionStatus", o.trial_ends_at AS "trialEndsAt", o.is_approved AS "orgIsApproved", o.timezone AS "orgTimezone", o.created_at AS "orgCreatedAt"
          FROM users u
          JOIN roles r ON u.role_id = r.id
          LEFT JOIN departments d ON u.department_id = d.id
@@ -325,6 +326,7 @@ export class AuthController {
         departmentName: user.departmentName,
         status: user.status,
         isSuperAdmin: user.isSuperAdmin,
+        githubUsername: user.githubUsername || null,
         organizationId: user.organizationId,
         organization: user.organizationId
           ? {
@@ -334,6 +336,7 @@ export class AuthController {
               subscriptionStatus: user.subscriptionStatus,
               trialEndsAt: user.trialEndsAt,
               isApproved: user.orgIsApproved,
+              createdAt: user.orgCreatedAt,
             }
           : null,
       };
@@ -579,7 +582,6 @@ export class AuthController {
   static async updateSubscription(req: Request, res: Response, next: NextFunction) {
     try {
       const user = (req as any).user;
-      console.log("user", user)
       if (!user || !user.organization_id) {
         res.status(400).json({ error: { message: "Organization ID is missing.", status: 400 } });
         return;
@@ -587,7 +589,7 @@ export class AuthController {
 
       // Strict Admin permission check: Only Admins can manage billing / upgrade plan
       const isAdmin =
-        user.isSuperAdmin ||
+        user.is_super_admin ||
         user.role_name === "Admin" ||
         user.role_rank === 1 ||
         (user.permissions && user.permissions.includes("admin:manage"));

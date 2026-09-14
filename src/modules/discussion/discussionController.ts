@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { DiscussionService } from "../services/discussionService.js";
+import { DiscussionService } from "../../services/discussionService.js";
 
 export class DiscussionController {
   static async getByProject(req: Request, res: Response, next: NextFunction) {

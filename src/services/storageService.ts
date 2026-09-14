@@ -1,19 +1,29 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
-const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || "";
-const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY || "";
-const endpoint = process.env.CLOUDFLARE_R2_ENDPOINT || "";
-const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME || "collabix";
-const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL || "";
+function getR2Config() {
+  return {
+    accessKeyId: process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || "",
+    secretAccessKey: process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY || "",
+    endpoint: process.env.CLOUDFLARE_R2_ENDPOINT || "",
+    bucketName: process.env.CLOUDFLARE_R2_BUCKET_NAME || "collabix",
+    publicUrl: process.env.CLOUDFLARE_R2_PUBLIC_URL || "",
+  };
+}
 
-export const r2Client = new S3Client({
-  region: "auto",
-  endpoint: endpoint,
-  credentials: {
-    accessKeyId,
-    secretAccessKey,
-  },
-});
+export function getR2Client(): S3Client | null {
+  const { accessKeyId, secretAccessKey, endpoint } = getR2Config();
+  if (!accessKeyId || !secretAccessKey || !endpoint) {
+    return null;
+  }
+  return new S3Client({
+    region: "auto",
+    endpoint,
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+    },
+  });
+}
 
 /**
  * Uploads any file buffer to Cloudflare R2 object storage.
@@ -29,10 +39,16 @@ export async function uploadToR2(
   fileName: string,
   contentType: string
 ): Promise<string> {
+  const client = getR2Client();
+  const { bucketName, publicUrl, endpoint } = getR2Config();
+  if (!client) {
+    throw new Error("Cloudflare R2 is not configured");
+  }
+
   const cleanFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
   const fileKey = `${folder}/${Date.now()}-${cleanFileName}`;
 
-  await r2Client.send(
+  await client.send(
     new PutObjectCommand({
       Bucket: bucketName,
       Key: fileKey,
@@ -42,10 +58,21 @@ export async function uploadToR2(
   );
 
   if (publicUrl) {
-    return `${publicUrl}/${fileKey}`;
+    return `${publicUrl.replace(/\/+$/, "")}/${fileKey}`;
   }
   return `${endpoint}/${bucketName}/${fileKey}`;
 }
+
+export const r2Client = new Proxy({} as S3Client, {
+  get(target, prop, receiver) {
+    const client = getR2Client();
+    if (!client) {
+      throw new Error("Cloudflare R2 is not configured");
+    }
+    const val = (client as any)[prop];
+    return typeof val === "function" ? val.bind(client) : val;
+  },
+});
 
 /**
  * Deletes an object from Cloudflare R2 storage by its public URL.
@@ -56,11 +83,17 @@ export async function deleteFromR2(fileUrl: string): Promise<void> {
     return;
   }
 
+  const client = getR2Client();
+  const { bucketName } = getR2Config();
+  if (!client) {
+    return;
+  }
+
   try {
     const urlObj = new URL(fileUrl);
     const fileKey = urlObj.pathname.replace(/^\//, "");
 
-    await r2Client.send(
+    await client.send(
       new DeleteObjectCommand({
         Bucket: bucketName,
         Key: fileKey,

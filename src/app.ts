@@ -10,7 +10,7 @@ import { router as authRouter } from "./routes/auth.js";
 import { authenticateUser } from "./middleware/authenticate.js";
 import { validateCSRF } from "./middleware/csrf.js";
 import { errorHandler } from "./middleware/errorHandler.js";
-import { AuthController } from "./controllers/authController.js";
+import { AuthController } from "../src/modules/auth/authController.js";
 
 const app = express();
 
@@ -115,7 +115,11 @@ function checkSubscription(
 
   // Active subscription check
   if (status === "active" || status === "approved") {
-    return next();
+    const now = new Date();
+    const expiry = trial_ends_at ? new Date(trial_ends_at) : null;
+    if (!expiry || isNaN(expiry.getTime()) || now < expiry) {
+      return next();
+    }
   }
 
   // Active trial check

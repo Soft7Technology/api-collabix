@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { db } from "../db/index.js";
+import { db } from "../../db/index.js";
 
 export interface RepositoryItem {
   id: string;
