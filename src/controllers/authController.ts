@@ -1,13 +1,14 @@
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { AuthService, hashToken } from "../services/authService.js";
+import { RazorpayService } from "../services/razorpayService.js";
 import {
   generateAccessToken,
   generateRefreshToken,
   comparePassword,
   hashPassword,
 } from "../utils/auth.js";
-import { db } from "../db/index.js";
+import { pool, db } from "../db/index.js";
 import { config } from "../config/index.js";
 
 // Cookie configurations
@@ -578,7 +579,8 @@ export class AuthController {
   static async updateSubscription(req: Request, res: Response, next: NextFunction) {
     try {
       const user = (req as any).user;
-      if (!user || !user.organizationId) {
+      console.log("user", user)
+      if (!user || !user.organization_id) {
         res.status(400).json({ error: { message: "Organization ID is missing.", status: 400 } });
         return;
       }
@@ -586,9 +588,11 @@ export class AuthController {
       // Strict Admin permission check: Only Admins can manage billing / upgrade plan
       const isAdmin =
         user.isSuperAdmin ||
-        user.roleName === "Admin" ||
-        user.roleRank === 1 ||
+        user.role_name === "Admin" ||
+        user.role_rank === 1 ||
         (user.permissions && user.permissions.includes("admin:manage"));
+
+      // const isAdmin = true;
 
       if (!isAdmin) {
         res.status(403).json({
@@ -599,11 +603,11 @@ export class AuthController {
         });
         return;
       }
-
+       console.log("req.body", req.body)
       const { planId, billingCycle } = req.body;
       const result = await AuthService.updateSubscription({
         userId: user.id,
-        organizationId: user.organizationId,
+        organizationId: user.organization_id,
         planId,
         billingCycle,
       });
@@ -613,4 +617,211 @@ export class AuthController {
       res.status(400).json({ error: { message: error.message, status: 400 } });
     }
   }
+
+  /**
+   * POST /auth/subscription/verify
+   */
+  static async verifySubscriptionPayment(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const user = (req as any).user;
+
+    if (!user || !user.organization_id) {
+      res.status(400).json({
+        error: {
+          message: "Organization ID is missing.",
+          status: 400,
+        },
+      });
+      return;
+    }
+
+    const {
+      razorpayPaymentId,
+      razorpaySubscriptionId,
+      razorpaySignature,
+    } = req.body;
+
+    if (
+      !razorpayPaymentId ||
+      !razorpaySubscriptionId ||
+      !razorpaySignature
+    ) {
+      res.status(400).json({
+        error: {
+          message: "Payment verification details are required.",
+          status: 400,
+        },
+      });
+      return;
+    }
+
+    const result =
+      await AuthService.verifySubscriptionPayment({
+        organizationId: user.organization_id,
+        razorpayPaymentId,
+        razorpaySubscriptionId,
+        razorpaySignature,
+      });
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({
+      error: {
+        message: error.message,
+        status: 400,
+      }, 
+    });
+  }
+}
+
+/**
+   * POST /auth/subscription/webhook
+   */
+static async razorpayWebhook(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const signature = req.headers["x-razorpay-signature"];
+
+    if (typeof signature !== "string") {
+      res.status(400).json({
+        error: {
+          message: "Missing Razorpay webhook signature.",
+          status: 400,
+        },
+      });
+      return;
+    }
+
+    if (!Buffer.isBuffer(req.body)) {
+      res.status(400).json({
+        error: {
+          message: "Webhook body must be raw.",
+          status: 400,
+        },
+      });
+      return;
+    }
+
+    const isValid = await RazorpayService.verifyRazorpayWebhookSignature(
+      req.body,
+      signature
+    );
+
+    if (!isValid) {
+      res.status(400).json({
+        error: {
+          message: "Invalid Razorpay webhook signature.",
+          status: 400,
+        },
+      });
+      return;
+    }
+
+    const payload = JSON.parse(req.body.toString("utf8"));
+
+    console.log("Razorpay webhook:", payload.event);
+
+    await AuthService.handleRazorpayWebhook(payload);
+
+    res.status(200).json({
+      success: true,
+    });
+  } catch (error: any) {
+    console.error("Razorpay webhook error:", error);
+
+    res.status(500).json({
+      error: {
+        message: "Webhook processing failed.",
+        status: 500,
+      },
+    });
+  } 
+}
+
+static async cancelSubscription(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const user = (req as any).user;
+
+    if (!user || !user.organization_id) {
+      res.status(400).json({
+        error: {
+          message: "Organization ID is missing.",
+          status: 400,
+        },
+      });
+      return;
+    }
+
+    const isAdmin =
+      user.isSuperAdmin ||
+      user.role_name === "Admin" ||
+      user.role_rank === 1 ||
+      (user.permissions &&
+        user.permissions.includes("admin:manage"));
+
+    if (!isAdmin) {
+      res.status(403).json({
+        error: {
+          message:
+            "Only organization Admins are authorized to cancel subscriptions.",
+          status: 403,
+        },
+      });
+      return;
+    }
+
+    const result =
+      await AuthService.cancelSubscription({
+        organizationId: user.organization_id,
+      });
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({
+      error: {
+        message: error.message,
+        status: 400,
+      },
+    });
+  }
+}
+
+static async getOrganizationSubscription(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const user = (req as any).user;
+
+    if (!user?.organization_id) {
+      res.status(401).json({
+        error: {
+          message: "Unauthorized.",
+          status: 401,
+        },
+      });
+      return;
+    }
+
+    const subscription = await AuthService.getOrganizationSubscription({
+      organizationId: user.organization_id,
+  });
+
+    res.json({ subscription });
+  } catch (error) {
+    next(error);
+  }
+}
 }

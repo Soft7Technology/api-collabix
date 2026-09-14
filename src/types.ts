@@ -101,3 +101,14 @@ export interface Leave {
   startDate: string;
   endDate: string;
 }
+
+export interface RazorpaySubscriptionResponse {
+  id: string;
+  entity: string;
+  status: string;
+  plan_id: string;
+  total_count: number;
+  paid_count: number;
+  remaining_count: number;
+  quantity: number;
+}
