@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import "dotenv/config"
 import { pool, db } from "../db/index.js";
 import {
   comparePassword,
@@ -8,6 +9,13 @@ import {
 } from "../utils/auth.js";
 import { config } from "../config/index.js";
 import { emailService } from "./emailService.js";
+import { RazorpayService } from "./razorpayService.js";
+
+const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
+
+if (!razorpayKeyId) {
+  throw new Error("RAZORPAY_KEY_ID is not configured.");
+}
 
 /**
  * SHA-256 hash helper for secure tokens (invitations & refresh tokens).
@@ -625,50 +633,657 @@ export class AuthService {
 
   /**
    * Update organization subscription status and plan.
-   */
+   */ 
   static async updateSubscription(params: {
-    userId: string;
-    organizationId: string;
-    planId: string;
-    billingCycle?: string;
-  }) {
-    const { userId, organizationId, planId, billingCycle = "monthly" } = params;
+  userId: string;
+  organizationId: string;
+  planId: string;
+  billingCycle?: string;
+}) {
+  const {
+    userId,
+    organizationId,
+    planId,
+    billingCycle = "monthly",
+  } = params;
 
-    if (!organizationId) {
-      throw new Error("User organization not found.");
-    }
+  if (!organizationId) {
+    throw new Error("User organization not found.");
+  }
 
-    const days = billingCycle === "yearly" ? 365 : 30;
-    const orgRes = await pool.query(
-      `UPDATE organizations
-       SET subscription_status = 'ACTIVE',
-           trial_ends_at = CASE 
-             WHEN trial_ends_at IS NOT NULL AND trial_ends_at > NOW() THEN
-               trial_ends_at + CAST($2 || ' days' AS INTERVAL)
-             ELSE
-               NOW() + CAST($2 || ' days' AS INTERVAL)
-           END,
-           updated_at = NOW()
-       WHERE id = $1
-       RETURNING id, name, subscription_status, trial_ends_at, is_approved, timezone;`,
-      [organizationId, days],
+  if (!["monthly", "yearly"].includes(billingCycle)) {
+    throw new Error("Invalid billing cycle.");
+  }
+
+  const planRes = await pool.query(
+    `SELECT
+       id,
+       name,
+       price_monthly,
+       price_yearly,
+       razorpay_monthly_plan_id,
+       razorpay_yearly_plan_id
+     FROM plans
+     WHERE id = $1
+       AND is_active = TRUE`,
+    [planId]
+  );
+
+  const plan = planRes.rows[0];
+
+  if (!plan) {
+    throw new Error("Selected plan not found or inactive.");
+  }
+
+  const razorpayPlanId =
+    billingCycle === "monthly"
+      ? plan.razorpay_monthly_plan_id
+      : plan.razorpay_yearly_plan_id;
+
+  if (!razorpayPlanId) {
+    throw new Error(
+      `Razorpay plan is not configured for ${planId} ${billingCycle}.`
+    );
+  }
+
+  const price =
+    billingCycle === "monthly"
+      ? plan.price_monthly
+      : plan.price_yearly;
+
+      console.log("price",price)
+
+  // Checking weather organization has a pending/active subscription
+  const existingRes = await pool.query(
+    `SELECT
+       id,
+       plan_id,
+       billing_cycle,
+       status,
+       razorpay_subscription_id
+     FROM subscriptions
+     WHERE organization_id = $1
+       AND status IN ('pending', 'active')
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [organizationId]
+  );
+
+  const existingSubscription = existingRes.rows[0];
+
+  
+  // Reuse an old pending database record if one exists, otherwise creating new
+  let databaseSubscriptionId: string;
+  
+  const samePlanAndCycle =
+  existingSubscription?.plan_id === planId &&
+  existingSubscription?.billing_cycle === billingCycle;
+
+  if(!existingSubscription){
+      
+      const subscriptionRes = await pool.query(
+      `INSERT INTO subscriptions (
+         organization_id,
+         plan_id,
+         billing_cycle,
+         status
+       )
+       VALUES ($1, $2, $3, 'pending')
+       RETURNING id`,
+      [organizationId, planId, billingCycle]
     );
 
-    const updatedOrg = orgRes.rows[0];
-    if (!updatedOrg) {
-      throw new Error("Organization not found.");
-    }
+    databaseSubscriptionId = subscriptionRes.rows[0].id;
+      
+  } 
+  
+  else if (existingSubscription?.status === "active") {
+    throw new Error(
+      "Your organization already has an active subscription."
+    );
+  }
+
+
+ else if (
+    existingSubscription.status === "pending" &&
+    !existingSubscription.razorpay_subscription_id
+  ) {
+    databaseSubscriptionId = existingSubscription.id;
+
+    await pool.query(
+      `UPDATE subscriptions
+       SET plan_id = $1,
+           billing_cycle = $2,
+           status = 'pending',
+           updated_at = NOW()
+       WHERE id = $3`,
+      [planId, billingCycle, databaseSubscriptionId]
+    );
+  }
+  
+  else if (  
+            existingSubscription?.status === "pending" &&
+            existingSubscription?.razorpay_subscription_id && 
+            samePlanAndCycle
+    ) {
+  return {
+    message: "Existing Razorpay subscription found. Continue payment.",
+    subscription: {
+      id: existingSubscription.id,
+      planId,
+      billingCycle,
+      status: existingSubscription.status,
+      razorpaySubscriptionId:
+        existingSubscription.razorpay_subscription_id,
+      razorpayKeyId,
+    },
+  };
+} 
+
+else {
+  await pool.query(
+  `UPDATE subscriptions
+   SET status = 'cancelled',
+       cancelled_at = NOW(),
+       updated_at = NOW()
+   WHERE id = $1
+     AND status = 'pending'`,
+  [existingSubscription.id]
+);
+    const subscriptionRes = await pool.query(
+      `INSERT INTO subscriptions (
+         organization_id,
+         plan_id,
+         billing_cycle,
+         status
+       )
+       VALUES ($1, $2, $3, 'pending')
+       RETURNING id`,
+      [organizationId, planId, billingCycle]
+    );
+
+    databaseSubscriptionId = subscriptionRes.rows[0].id;
+  }
+
+  try {
+    // Create the REAL Razorpay subscription
+    const totalCount =
+      billingCycle === "monthly"
+        ? 1200
+        : 100;
+
+    const razorpaySubscription =
+      await RazorpayService.createRazorpaySubscription({
+        planId: razorpayPlanId,
+        totalCount,
+        notes: {
+          organization_id: organizationId,
+          db_subscription_id: databaseSubscriptionId,
+          plan_id: planId,
+          billing_cycle: billingCycle,
+        },
+      });
+
+    // 7. Store Razorpay's subscription ID in db
+    const updatedRes = await pool.query(
+      `UPDATE subscriptions
+       SET razorpay_subscription_id = $1,
+           status = 'pending',
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING
+         id,
+         organization_id,
+         plan_id,
+         billing_cycle,
+         status,
+         razorpay_subscription_id`,
+      [
+        razorpaySubscription.id,
+        databaseSubscriptionId,
+      ]
+    );
+
+    const subscription = updatedRes.rows[0];
 
     return {
-      message: `Successfully upgraded to ${planId.toUpperCase()} Plan (${billingCycle})!`,
-      organization: {
-        id: updatedOrg.id,
-        name: updatedOrg.name,
-        timezone: updatedOrg.timezone,
-        subscriptionStatus: updatedOrg.subscription_status,
-        trialEndsAt: updatedOrg.trial_ends_at,
-        isApproved: updatedOrg.is_approved,
+      message: "Razorpay subscription created. Payment authorization required.",
+
+      subscription: {
+        id: subscription.id,
+        organizationId: subscription.organization_id,
+        planId: subscription.plan_id,
+        planName: plan.name,
+        billingCycle: subscription.billing_cycle,
+        amount: price,
+        status: subscription.status,
+
+        razorpaySubscriptionId:
+          subscription.razorpay_subscription_id,
+
+          //Razorpay key id for Razorpay checkout
+        razorpayKeyId,
       },
     };
+  } catch (error) {
+    await pool.query(
+      `UPDATE subscriptions
+       SET status = 'failed',
+           updated_at = NOW()
+       WHERE id = $1`,
+      [databaseSubscriptionId]
+    );
+
+    throw error;
   }
 }
+
+// Verification by razorpay for payment done
+static async verifySubscriptionPayment(params: {
+  organizationId: string;
+  razorpayPaymentId: string;
+  razorpaySubscriptionId: string;
+  razorpaySignature: string;
+}) {
+  const {
+    organizationId,
+    razorpayPaymentId,
+    razorpaySubscriptionId,
+    razorpaySignature,
+  } = params;
+
+  const subscriptionRes = await pool.query(
+    `SELECT
+       id,
+       organization_id,
+       plan_id,
+       billing_cycle,
+       status,
+       razorpay_subscription_id
+     FROM subscriptions
+     WHERE organization_id = $1
+       AND razorpay_subscription_id = $2
+     LIMIT 1`,
+    [organizationId, razorpaySubscriptionId]
+  );
+
+  const subscription = subscriptionRes.rows[0];
+
+  if (!subscription) {
+    throw new Error(
+      "Subscription not found for this organization."
+    );
+  }
+
+  // Verification for payment
+  const isValid =
+   await RazorpayService.verifyRazorpaySubscriptionPayment({
+      paymentId: razorpayPaymentId,
+      subscriptionId: razorpaySubscriptionId,
+      signature: razorpaySignature,
+    });
+
+  if (!isValid) {
+    throw new Error("Invalid Razorpay payment signature.");
+  }
+
+  const razorpaySubscription =
+  await RazorpayService.getRazorpaySubscription(
+    razorpaySubscriptionId,
+  );
+
+  const currentPeriodStart =
+  razorpaySubscription.current_start
+    ? new Date(
+        razorpaySubscription.current_start * 1000,
+      )
+    : null;
+
+const currentPeriodEnd =
+  razorpaySubscription.current_end
+    ? new Date(
+        razorpaySubscription.current_end * 1000,
+      )
+    : null;
+
+ const updatedSubscriptionRes = await pool.query(
+  `UPDATE subscriptions
+   SET status = 'active',
+       razorpay_customer_id = $1,
+       started_at = COALESCE(
+         started_at,
+         NOW()
+       ),
+       current_period_start = $2,
+       current_period_end = $3,
+       updated_at = NOW()
+   WHERE id = $4
+   RETURNING
+     id,
+     organization_id,
+     plan_id,
+     billing_cycle,
+     status,
+     razorpay_subscription_id,
+     started_at,
+     current_period_start,
+     current_period_end`,
+  [
+    razorpaySubscription.customer_id ?? null,
+    currentPeriodStart,
+    currentPeriodEnd,
+    subscription.id,
+  ],
+);
+
+  const updatedSubscription =
+    updatedSubscriptionRes.rows[0];
+
+  await pool.query(
+    `UPDATE organizations
+     SET subscription_status = 'ACTIVE',
+         updated_at = NOW()
+     WHERE id = $1`,
+    [organizationId]
+  );
+
+  return {
+    message: "Payment verified successfully.",
+    subscription: {
+      id: updatedSubscription.id,
+      organizationId:
+        updatedSubscription.organization_id,
+      planId: updatedSubscription.plan_id,
+      billingCycle:
+        updatedSubscription.billing_cycle,
+      status: updatedSubscription.status,
+      razorpaySubscriptionId:
+        updatedSubscription.razorpay_subscription_id,
+      startedAt: updatedSubscription.started_at,
+      currentPeriodStart:
+        updatedSubscription.current_period_start,
+    },
+  };
+}
+
+
+// Razorpay webhook to align razropay subscription status with our DB subscription status
+static async handleRazorpayWebhook(payload: any) {
+  const event = payload?.event;
+  const subscription =
+    payload?.payload?.subscription?.entity;
+
+  if (!event || !subscription) {
+    throw new Error("Invalid Razorpay webhook payload.");
+  }
+
+  switch (event) {
+    case "subscription.authenticated":
+      await pool.query(
+        `UPDATE subscriptions
+         SET status = 'pending',
+             razorpay_customer_id = $1,
+             updated_at = NOW()
+         WHERE razorpay_subscription_id = $2`,
+        [
+          subscription.customer_id,
+          subscription.id,
+        ]
+      );
+      break;
+
+    case "subscription.activated": {
+    const result =  await pool.query(
+        `UPDATE subscriptions
+         SET status = 'active',
+             razorpay_customer_id = $1,
+             current_period_start = $2,
+             current_period_end = $3,
+             started_at = COALESCE(started_at, NOW()),
+             updated_at = NOW()
+         WHERE razorpay_subscription_id = $4
+         RETURNING organization_id`,
+        [
+          subscription.customer_id ?? null,
+          subscription.current_start
+            ? new Date(subscription.current_start * 1000)
+            : null,
+          subscription.current_end
+            ? new Date(subscription.current_end * 1000)
+            : null,
+          subscription.id,
+        ]
+      );
+
+      const organizationId =
+        result.rows[0]?.organization_id;
+
+      if (organizationId) {
+        await pool.query(
+          `UPDATE organizations
+           SET subscription_status = 'ACTIVE',
+               updated_at = NOW()
+           WHERE id = $1`,
+          [organizationId]
+        );
+      }
+
+      break;
+    }
+
+    case "subscription.charged":
+      await pool.query(
+        `UPDATE subscriptions
+         SET status = 'active',
+             current_period_start = $1,
+             current_period_end = $2,
+             updated_at = NOW()
+         WHERE razorpay_subscription_id = $3`,
+        [
+          subscription.current_start
+            ? new Date(subscription.current_start * 1000)
+            : null,
+          subscription.current_end
+            ? new Date(subscription.current_end * 1000)
+            : null,
+          subscription.id,
+        ]
+      );
+      break;
+
+    case "subscription.pending":
+      await pool.query(
+        `UPDATE subscriptions
+         SET status = 'pending',
+             updated_at = NOW()
+         WHERE razorpay_subscription_id = $1`,
+        [subscription.id]
+      );
+      break;
+
+    case "subscription.halted":
+      await pool.query(
+        `UPDATE subscriptions
+         SET status = 'paused',
+             updated_at = NOW()
+         WHERE razorpay_subscription_id = $1`,
+        [subscription.id]
+      );
+      break;
+
+   case "subscription.cancelled": {
+   await pool.query(
+    `UPDATE subscriptions
+     SET status = 'cancelled',
+         cancel_at_period_end = FALSE,
+         cancelled_at = COALESCE(cancelled_at, NOW()),
+         updated_at = NOW()
+     WHERE razorpay_subscription_id = $1
+     RETURNING organization_id`,
+    [subscription.id],
+  );
+
+  break;
+   }
+
+    case "subscription.completed": {
+  await pool.query(
+    `UPDATE subscriptions
+     SET status = 'expired',
+         updated_at = NOW()
+     WHERE razorpay_subscription_id = $1`,
+    [subscription.id]
+  );
+
+  await pool.query(
+    `UPDATE organizations
+     SET subscription_status = 'EXPIRED',
+         trial_ends_at = NULL,
+         updated_at = NOW()
+     WHERE id = (
+       SELECT organization_id
+       FROM subscriptions
+       WHERE razorpay_subscription_id = $1
+     )`,
+    [subscription.id]
+  );
+
+  break;
+}
+
+    default:
+      console.log(`Unhandled Razorpay event: ${event}`);
+  }
+}
+
+// Cancelling organization subscription
+static async cancelSubscription(params: {
+  organizationId: string;
+}) {
+  const { organizationId } = params;
+
+  const subscriptionRes = await pool.query(
+    `SELECT
+       id,
+       plan_id,
+       billing_cycle,
+       status,
+       razorpay_subscription_id,
+       current_period_start,
+       current_period_end,
+       cancel_at_period_end
+     FROM subscriptions
+     WHERE organization_id = $1
+       AND status = 'active'
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [organizationId],
+  );
+
+  const subscription = subscriptionRes.rows[0];
+
+  if (!subscription) {
+    throw new Error("No active subscription found.");
+  }
+
+  if (subscription.cancel_at_period_end) {
+    throw new Error(
+      "This subscription is already scheduled for cancellation.",
+    );
+  }
+
+  if (!subscription.razorpay_subscription_id) {
+    throw new Error(
+      "Razorpay subscription ID is missing.",
+    );
+  }
+
+  await RazorpayService.cancelRazorpaySubscription(
+    subscription.razorpay_subscription_id,
+    true,
+  );
+
+  const updatedRes = await pool.query(
+    `UPDATE subscriptions
+     SET cancel_at_period_end = TRUE,
+         updated_at = NOW()
+     WHERE id = $1
+     RETURNING
+       id,
+       plan_id,
+       billing_cycle,
+       status,
+       razorpay_subscription_id,
+       current_period_start,
+       current_period_end,
+       cancel_at_period_end`,
+    [subscription.id],
+  );
+
+  const updatedSubscription = updatedRes.rows[0];
+
+  return {
+    message:
+      "Subscription cancellation scheduled for the end of the current billing period.",
+    subscription: {
+      id: updatedSubscription.id,
+      planId: updatedSubscription.plan_id,
+      billingCycle: updatedSubscription.billing_cycle,
+      status: updatedSubscription.status,
+      razorpaySubscriptionId:
+        updatedSubscription.razorpay_subscription_id,
+      currentPeriodStart:
+        updatedSubscription.current_period_start,
+      currentPeriodEnd:
+        updatedSubscription.current_period_end,
+      cancelAtPeriodEnd:
+        updatedSubscription.cancel_at_period_end,
+    },
+  };
+}
+
+static async getOrganizationSubscription(params:{
+  organizationId: string;
+}) {
+
+  const { organizationId } = params;
+
+   const res = await db.query(
+    `SELECT
+       id,
+       plan_id,
+       billing_cycle,
+       status,
+       current_period_start,
+       current_period_end,
+       cancel_at_period_end
+     FROM subscriptions
+     WHERE organization_id = $1
+       AND status = 'active'
+     LIMIT 1`,
+    [organizationId],
+  );
+
+  const organizationSubscription =  res.rows[0] ?? null;
+
+  return {
+  subscription: organizationSubscription
+    ? {
+        id: organizationSubscription.id,
+        planName: organizationSubscription.plan_id,
+        billingCycle: organizationSubscription.billing_cycle,
+        status: organizationSubscription.status,
+        currentPeriodStart:
+          organizationSubscription.current_period_start,
+        currentPeriodEnd:
+          organizationSubscription.current_period_end,
+        startedAt: organizationSubscription.started_at,
+        cancelledAt: organizationSubscription.cancelled_at,
+        cancelAtPeriodEnd:
+          organizationSubscription.cancel_at_period_end,
+      }
+    : null,
+};
+}
+}
+

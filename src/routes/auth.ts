@@ -25,15 +25,16 @@ router.post("/setup-password", authLimiter, AuthController.setupPassword);
 router.get("/verify-invite", AuthController.verifyInvite);
 
 // Logout
-router.post("/logout", AuthController.logout);
+router.post("/logout", AuthController.logout); 
 
 // Current User Session (authenticated)
 router.get("/me", authenticateUser, AuthController.me);
 
-// Organization Subscription Upgrade/Renewal
+// Organization Subscription upgrade/Renewal, Verification
 router.post("/subscription", authenticateUser, AuthController.updateSubscription);
-router.post("/subscription/create-order", authenticateUser, AuthController.createSubscriptionOrder);
 router.post("/subscription/verify", authenticateUser, AuthController.verifySubscriptionPayment);
+router.post("/subscription/cancel", authenticateUser, AuthController.cancelSubscription,);
+router.get("/subscription", authenticateUser, AuthController.getOrganizationSubscription)
 
 // Password Reset Flow
 router.post("/forgot-password", authLimiter, AuthController.forgotPassword);

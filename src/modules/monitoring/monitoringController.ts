@@ -129,6 +129,13 @@ export class MonitoringController {
       const orgId = req.user.organization_id || null;
       const { startDate, endDate, userId, limit } = req.query;
 
+      const roleRank = req.user.role_rank ?? 4;
+      const isAdmin =
+        req.user.is_super_admin ||
+        roleRank <= 1 ||
+        (req.user.role_name && req.user.role_name.toLowerCase() === "admin") ||
+        (req.user.role_name && req.user.role_name.toLowerCase() === "super admin");
+
       const params: any[] = [orgId];
       let queryStr = `
         SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, sl.duration_seconds, sl.user_id, u.name as user_name, u.email as user_email
@@ -137,6 +144,30 @@ export class MonitoringController {
         WHERE u.organization_id IS NOT DISTINCT FROM $1
           AND sl.screenshot_path != 'SESSION_STOPPED'
       `;
+
+      if (!isAdmin) {
+        if (roleRank > 3) {
+          // Regular teammates can only query their own screenshots
+          params.push(req.user.id);
+          queryStr += ` AND sl.user_id = $${params.length}`;
+        } else {
+          // Managers / Team Leaders can only query their own or shared project teammates' screenshots
+          params.push(req.user.id);
+          const uIdx = params.length;
+          queryStr += ` AND (
+            sl.user_id = $${uIdx}
+            OR sl.user_id IN (
+              SELECT pm2.member_id 
+              FROM project_members pm2 
+              WHERE pm2.project_id IN (
+                SELECT pm1.project_id 
+                FROM project_members pm1 
+                WHERE pm1.member_id = $${uIdx}
+              )
+            )
+          )`;
+        }
+      }
 
       if (userId) {
         params.push(userId);

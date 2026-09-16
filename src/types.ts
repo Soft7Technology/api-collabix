@@ -87,13 +87,41 @@ export interface Sprint {
   endDate: string;
 }
 
+export interface MeetingAttendee {
+  id: string;
+  name: string;
+  email?: string;
+  avatarColor?: string;
+  role?: string;
+  status?: string;
+}
+
 export interface Meeting {
   id: string;
   title: string;
+  projectId?: string | null;
+  projectName?: string | null;
+  platform?: string;
+  meetingLink?: string;
+  meetingCode?: string;
+  passcode?: string;
+  hostId?: string;
+  hostName?: string;
+  teamDepartment?: string;
+  description?: string;
+  agenda?: string[];
   date: string;
   startTime: string;
   endTime: string;
-  attendees: string[];
+  durationMinutes?: number;
+  timezone?: string;
+  status?: "upcoming" | "live" | "completed" | "cancelled";
+  recordingUrl?: string;
+  notes?: string;
+  attendees: MeetingAttendee[] | string[];
+  organizationId?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Leave {
@@ -102,4 +130,15 @@ export interface Leave {
   type: "vacation" | "sick" | "parental";
   startDate: string;
   endDate: string;
+}
+
+export interface RazorpaySubscriptionResponse {
+  id: string;
+  entity: string;
+  status: string;
+  plan_id: string;
+  total_count: number;
+  paid_count: number;
+  remaining_count: number;
+  quantity: number;
 }

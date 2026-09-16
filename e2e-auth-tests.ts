@@ -106,7 +106,7 @@ async function runTests() {
       err.message,
     );
     process.exit(1);
-  }
+  }  
 
   // ---------------------------------------------------------------------------
   // TEST GROUP 1: Invite → Setup Password → Login (Happy Path)
