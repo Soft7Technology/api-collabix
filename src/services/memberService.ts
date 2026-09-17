@@ -64,14 +64,17 @@ export class MemberService {
       WHERE u.organization_id = $1
     `;
 
-    const isAdmin =
+    const isAdminOrManager =
       !userCtx ||
       userCtx.isSuperAdmin ||
-      userCtx.roleRank <= 1 ||
-      (userCtx.roleName && userCtx.roleName.toLowerCase() === "admin") ||
-      (userCtx.roleName && userCtx.roleName.toLowerCase() === "super admin");
+      (userCtx.roleRank !== undefined && userCtx.roleRank <= 2) ||
+      (userCtx.roleName && (
+        userCtx.roleName.toLowerCase() === "admin" ||
+        userCtx.roleName.toLowerCase() === "super admin" ||
+        userCtx.roleName.toLowerCase() === "manager"
+      ));
 
-    if (!isAdmin && userCtx?.id) {
+    if (!isAdminOrManager && userCtx?.id) {
       params.push(userCtx.id);
       const userIdx = params.length;
       queryStr += ` AND (
@@ -153,14 +156,17 @@ export class MemberService {
       params.push(organizationId);
     }
 
-    const isTargetAdmin =
+    const isTargetAdminOrManager =
       !userCtx ||
       userCtx.isSuperAdmin ||
-      userCtx.roleRank <= 1 ||
-      (userCtx.roleName && userCtx.roleName.toLowerCase() === "admin") ||
-      (userCtx.roleName && userCtx.roleName.toLowerCase() === "super admin");
+      (userCtx.roleRank !== undefined && userCtx.roleRank <= 2) ||
+      (userCtx.roleName && (
+        userCtx.roleName.toLowerCase() === "admin" ||
+        userCtx.roleName.toLowerCase() === "super admin" ||
+        userCtx.roleName.toLowerCase() === "manager"
+      ));
 
-    if (!isTargetAdmin && userCtx?.id && userCtx.id !== id) {
+    if (!isTargetAdminOrManager && userCtx?.id && userCtx.id !== id) {
       params.push(userCtx.id);
       const userIdx = params.length;
       queryStr += ` AND u.id IN (

@@ -23,13 +23,17 @@ export class ProjectService {
       return [];
     }
 
-    const isAdmin =
+    const isAdminOrManager =
       !userCtx ||
       userCtx.isSuperAdmin ||
-      userCtx.roleRank === 1 ||
-      (userCtx.roleName && userCtx.roleName.toLowerCase() === "admin");
+      (userCtx.roleRank !== undefined && userCtx.roleRank <= 2) ||
+      (userCtx.roleName && (
+        userCtx.roleName.toLowerCase() === "admin" ||
+        userCtx.roleName.toLowerCase() === "super admin" ||
+        userCtx.roleName.toLowerCase() === "manager"
+      ));
 
-    if (isAdmin) {
+    if (isAdminOrManager) {
       // Organization Admin / Superadmin: return all projects for this organization
       const { rows } = await db.query(
         `

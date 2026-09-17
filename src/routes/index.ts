@@ -33,10 +33,14 @@ import {
   createBranchSchema,
   createMeetingSchema,
   updateMeetingSchema,
+  createWorkReportSchema,
+  updateWorkReportSchema,
+  reviewWorkReportSchema,
 } from "../schemas/index.js";
 import { RepositoryController } from "../modules/system/repositoryController.js";
 import { GithubController } from "../modules/system/githubController.js";
 import { MeetingController } from "../modules/meeting/meetingController.js";
+import { DocumentationController } from "../modules/documentation/documentationController.js";
 
 
 const router = Router();
@@ -212,6 +216,27 @@ router.patch("/leaves/:id/status", DashboardController.updateLeaveStatus);
 router.delete("/leaves/:id", DashboardController.deleteLeave);
 
 router.get("/activity", DashboardController.getActivity);
+
+// Work Documentation Reports routes
+router.get("/documentation/reports", DocumentationController.getAll);
+router.get("/documentation/reports/summary", DocumentationController.getSummary);
+router.get("/documentation/reports/:id", DocumentationController.getById);
+router.post(
+  "/documentation/reports",
+  validate(createWorkReportSchema),
+  DocumentationController.create,
+);
+router.patch(
+  "/documentation/reports/:id",
+  validate(updateWorkReportSchema),
+  DocumentationController.update,
+);
+router.post(
+  "/documentation/reports/:id/review",
+  validate(reviewWorkReportSchema),
+  DocumentationController.review,
+);
+router.delete("/documentation/reports/:id", DocumentationController.delete);
 
 import { UploadController, attachmentMulter } from "../modules/system/uploadController.js";
 
