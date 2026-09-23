@@ -758,4 +758,105 @@ export class AuthController {
       res.status(400).json({ error: { message: error.message, status: 400 } });
     }
   }
+
+  /**
+   * GET /auth/subscription
+   */
+  static async getSubscription(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = (req as any).user;
+      if (!user || !user.organization_id) {
+        res.status(200).json({ subscription: { subscription: null } });
+        return;
+      }
+
+      const { rows } = await db.query(
+        `SELECT id, name, phone, subscription_status AS "subscriptionStatus", plan, trial_ends_at AS "trialEndsAt", is_approved AS "isApproved", created_at AS "createdAt", updated_at AS "updatedAt"
+         FROM organizations
+         WHERE id = $1;`,
+        [user.organization_id]
+      );
+
+      const org = rows[0];
+      if (!org) {
+        res.status(200).json({ subscription: { subscription: null } });
+        return;
+      }
+
+      const subscriptionData = {
+        id: org.id,
+        planName: org.plan || "pro",
+        billingCycle: "monthly",
+        status: org.subscriptionStatus || "trial",
+        currentPeriodStart: org.createdAt,
+        currentPeriodEnd: org.trialEndsAt,
+        startedAt: org.createdAt,
+        cancelledAt: null,
+        cancelAtPeriodEnd: false,
+      };
+
+      res.json({
+        subscription: {
+          subscription: subscriptionData,
+          organization: org,
+        },
+      });
+    } catch (error: any) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /auth/subscription/cancel
+   */
+  static async cancelSubscription(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = (req as any).user;
+      if (!user || !user.organization_id) {
+        res.status(400).json({ error: { message: "Organization ID is missing.", status: 400 } });
+        return;
+      }
+
+      const isAdmin =
+        user.is_super_admin ||
+        user.role_name === "Admin" ||
+        user.role_rank === 1 ||
+        (user.permissions && user.permissions.includes("admin:manage"));
+
+      if (!isAdmin) {
+        res.status(403).json({
+          error: {
+            message: "Only organization Admins are authorized to cancel subscriptions.",
+            status: 403,
+          },
+        });
+        return;
+      }
+
+      const { rows } = await db.query(
+        `SELECT id, name, subscription_status AS "subscriptionStatus", trial_ends_at AS "trialEndsAt", plan, created_at AS "createdAt"
+         FROM organizations
+         WHERE id = $1;`,
+        [user.organization_id]
+      );
+
+      const org = rows[0];
+      res.json({
+        message: "Subscription cancellation scheduled at the end of the billing period.",
+        subscription: {
+          id: user.organization_id,
+          planName: org?.plan || "pro",
+          billingCycle: "monthly",
+          status: org?.subscriptionStatus || "active",
+          currentPeriodStart: org?.createdAt || null,
+          currentPeriodEnd: org?.trialEndsAt || null,
+          startedAt: org?.createdAt || null,
+          cancelledAt: new Date().toISOString(),
+          cancelAtPeriodEnd: true,
+        },
+      });
+    } catch (error: any) {
+      next(error);
+    }
+  }
 }

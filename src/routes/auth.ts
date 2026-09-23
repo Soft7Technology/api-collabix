@@ -30,10 +30,12 @@ router.post("/logout", AuthController.logout);
 // Current User Session (authenticated)
 router.get("/me", authenticateUser, AuthController.me);
 
-// Organization Subscription Upgrade/Renewal
+// Organization Subscription Upgrade/Renewal/Info
+router.get("/subscription", authenticateUser, AuthController.getSubscription);
 router.post("/subscription", authenticateUser, AuthController.updateSubscription);
 router.post("/subscription/create-order", authenticateUser, AuthController.createSubscriptionOrder);
 router.post("/subscription/verify", authenticateUser, AuthController.verifySubscriptionPayment);
+router.post("/subscription/cancel", authenticateUser, AuthController.cancelSubscription);
 
 // Password Reset Flow
 router.post("/forgot-password", authLimiter, AuthController.forgotPassword);
