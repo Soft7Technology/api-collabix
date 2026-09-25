@@ -295,7 +295,7 @@ export class AuthController {
                 u.github_username AS "githubUsername",
                 r.name AS "roleName", r.rank AS "roleRank",
                 d.name AS "departmentName",
-                o.name AS "orgName", o.subscription_status AS "subscriptionStatus", o.trial_ends_at AS "trialEndsAt", o.is_approved AS "orgIsApproved", o.timezone AS "orgTimezone", o.created_at AS "orgCreatedAt"
+                o.name AS "orgName", COALESCE(o.plan, 'Pro') AS "orgPlan", o.subscription_status AS "subscriptionStatus", o.trial_ends_at AS "trialEndsAt", o.is_approved AS "orgIsApproved", o.timezone AS "orgTimezone", o.created_at AS "orgCreatedAt"
          FROM users u
          JOIN roles r ON u.role_id = r.id
          LEFT JOIN departments d ON u.department_id = d.id
@@ -332,6 +332,7 @@ export class AuthController {
           ? {
               id: user.organizationId,
               name: user.orgName,
+              plan: user.orgPlan || "Pro",
               timezone: user.orgTimezone,
               subscriptionStatus: user.subscriptionStatus,
               trialEndsAt: user.trialEndsAt,

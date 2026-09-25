@@ -29,7 +29,7 @@ export class AuthService {
       `SELECT u.id, u.name, u.email, u.password_hash, u.role_id, u.status, u.is_super_admin, u.organization_id, u.department_id, u.can_create_tasks,
               r.name as role_name, r.rank as role_rank,
               d.name as department_name,
-              o.name as org_name, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone as org_timezone, o.created_at as org_created_at 
+              o.name as org_name, COALESCE(o.plan, 'Pro') as org_plan, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone as org_timezone, o.created_at as org_created_at 
        FROM users u
        JOIN roles r ON u.role_id = r.id
        LEFT JOIN departments d ON u.department_id = d.id
@@ -81,6 +81,7 @@ export class AuthService {
         ? {
             id: user.organization_id,
             name: user.org_name,
+            plan: user.org_plan || "Pro",
             timezone: user.org_timezone,
             subscriptionStatus: user.subscription_status,
             trialEndsAt: user.trial_ends_at,
@@ -186,7 +187,7 @@ export class AuthService {
         `SELECT u.id, u.name, u.email, u.role_id, u.is_super_admin, u.organization_id, u.department_id,
                 r.name as role_name, r.rank as role_rank,
                 d.name as department_name,
-                o.name as org_name, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone as org_timezone, o.created_at as org_created_at
+                o.name as org_name, COALESCE(o.plan, 'Pro') as org_plan, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone as org_timezone, o.created_at as org_created_at
          FROM users u
          JOIN roles r ON u.role_id = r.id
          LEFT JOIN departments d ON u.department_id = d.id
@@ -230,6 +231,7 @@ export class AuthService {
           ? {
               id: user.organization_id,
               name: user.org_name,
+              plan: user.org_plan || "Pro",
               timezone: user.org_timezone,
               subscriptionStatus: user.subscription_status,
               trialEndsAt: user.trial_ends_at,
@@ -287,7 +289,7 @@ export class AuthService {
         `SELECT u.id, u.name, u.email, u.role_id, u.status, u.is_super_admin, u.organization_id, u.department_id,
                 r.name as role_name, r.rank as role_rank,
                 d.name as department_name,
-                o.name as org_name, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone as org_timezone, o.created_at as org_created_at
+                o.name as org_name, COALESCE(o.plan, 'Pro') as org_plan, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone as org_timezone, o.created_at as org_created_at
          FROM users u
          JOIN roles r ON u.role_id = r.id
          LEFT JOIN departments d ON u.department_id = d.id
@@ -344,6 +346,7 @@ export class AuthService {
           ? {
               id: user.organization_id,
               name: user.org_name,
+              plan: user.org_plan || "Pro",
               timezone: user.org_timezone,
               subscriptionStatus: user.subscription_status,
               trialEndsAt: user.trial_ends_at,
@@ -439,9 +442,9 @@ export class AuthService {
       // 1. Create Organization (5-day free trial, full feature access)
       const trialDays = process.env.TRIAL_DURATION_DAYS || "5";
       const orgResult = await client.query(
-        `INSERT INTO organizations (name, phone, subscription_status, trial_ends_at, is_approved)
-         VALUES ($1, $2, 'TRIALING', NOW() + CAST($3 || ' days' AS INTERVAL), TRUE)
-         RETURNING id, name, subscription_status, trial_ends_at, is_approved, created_at;`,
+        `INSERT INTO organizations (name, phone, plan, subscription_status, trial_ends_at, is_approved)
+         VALUES ($1, $2, 'Pro', 'TRIALING', NOW() + CAST($3 || ' days' AS INTERVAL), TRUE)
+         RETURNING id, name, COALESCE(plan, 'Pro') AS plan, subscription_status, trial_ends_at, is_approved, created_at;`,
         [companyTrimmed, phone.trim(), trialDays],
       );
       const organization = orgResult.rows[0];

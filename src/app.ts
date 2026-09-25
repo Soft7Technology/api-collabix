@@ -10,6 +10,7 @@ import { router as authRouter } from "./routes/auth.js";
 import { authenticateUser } from "./middleware/authenticate.js";
 import { validateCSRF } from "./middleware/csrf.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { SuperService } from "./services/superService.js";
 
 const app = express();
 
@@ -75,6 +76,37 @@ app.get("/api/health", (req, res) => {
 // Mount auth routes (unprotected)
 app.use("/auth", authRouter);
 
+// Middleware to enforce global maintenance mode (Super Admins bypass)
+async function checkMaintenanceMode(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+) {
+  const user = req.user;
+  if (user && user.is_super_admin) {
+    return next();
+  }
+
+  try {
+    const isMaintenance = await SuperService.isMaintenanceModeActive();
+    if (isMaintenance) {
+      res.setHeader("Retry-After", "300");
+      res.status(503).json({
+        error: {
+          message: "The platform is currently undergoing scheduled maintenance. Please try again shortly.",
+          code: "MAINTENANCE_MODE",
+          status: 503,
+        },
+      });
+      return;
+    }
+  } catch (err) {
+    console.error("Failed to check maintenance mode:", err);
+  }
+
+  next();
+}
+
 // Middleware to enforce active SaaS subscriptions or active trial periods
 function checkSubscription(
   req: express.Request,
@@ -91,23 +123,35 @@ function checkSubscription(
     return next();
   }
 
+  // Always allow support tickets, user profile updates, organization info, and auth operations
+  // Even if trial/subscription is expired, clients MUST be able to talk to Super Admin support and manage billing!
+  if (
+    req.path.startsWith("/support") ||
+    req.path.startsWith("/super") ||
+    req.path.startsWith("/users") ||
+    req.path.startsWith("/organization") ||
+    req.baseUrl === "/auth"
+  ) {
+    return next();
+  }
+
   const { subscription_status, trial_ends_at, is_approved } = user.organization || {};
   const status = (subscription_status || "").toLowerCase();
 
-  // Block immediately if expired or revoked
-  if (status === "expired" || status === "revoked") {
+  // Block immediately if explicitly revoked
+  if (status === "revoked") {
     res.status(402).json({
       error: {
-        message: "Your subscription has expired or was revoked. Subscription required to restore access.",
-        code: "SUBSCRIPTION_EXPIRED",
+        message: "Your workspace access was revoked by platform administrators.",
+        code: "SUBSCRIPTION_REVOKED",
         status: 402,
       },
     });
     return;
   }
 
-  // Active subscription check
-  if (status === "active" || status === "approved") {
+  // Active subscription check (approved or active status)
+  if (status === "active" || status === "approved" || is_approved) {
     const now = new Date();
     const expiry = trial_ends_at ? new Date(trial_ends_at) : null;
     if (!expiry || isNaN(expiry.getTime()) || now < expiry) {
@@ -116,7 +160,7 @@ function checkSubscription(
   }
 
   // Active trial check
-  if (!subscription_status || status === "trial" || status === "trialing" || is_approved) {
+  if (!subscription_status || status === "trial" || status === "trialing") {
     const now = new Date();
     const trialEnd = trial_ends_at ? new Date(trial_ends_at) : null;
     if (!trialEnd || isNaN(trialEnd.getTime()) || now < trialEnd) {
@@ -124,17 +168,21 @@ function checkSubscription(
     }
   }
 
+  const expiryFormatted = trial_ends_at
+    ? new Date(trial_ends_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : "recently";
+
   res.status(402).json({
     error: {
-      message: "Subscription Required: Free trial has ended. Please subscribe to restore access.",
+      message: `Action Restricted: Your workspace subscription expired on ${expiryFormatted}. Read-only access is enabled. Please renew your plan to create or modify tasks, projects, or tracking sessions.`,
       code: "SUBSCRIPTION_EXPIRED",
       status: 402,
     },
   });
 }
 
-// Mount API routes (protected with auth, subscription limits, and CSRF validation)
-app.use("/api", authenticateUser, checkSubscription, validateCSRF, apiRouter);
+// Mount API routes (protected with auth, maintenance mode, subscription limits, and CSRF validation)
+app.use("/api", authenticateUser, checkMaintenanceMode, checkSubscription, validateCSRF, apiRouter);
 
 // Global Error Handler
 app.use(errorHandler);

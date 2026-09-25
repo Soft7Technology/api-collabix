@@ -37,6 +37,7 @@ declare global {
         organization?: {
           id: string;
           name: string;
+          plan?: string;
           timezone: string;
           subscription_status: string;
           trial_ends_at: string;

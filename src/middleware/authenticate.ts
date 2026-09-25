@@ -46,7 +46,7 @@ export async function authenticateUser(
       `SELECT u.id, u.name, u.email, u.role_id, u.status, u.department_id, u.is_super_admin, u.organization_id, u.can_create_tasks,
               d.name as department_name,
               r.name as role_name, r.rank as role_rank,
-              o.name as org_name, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone, o.created_at as org_created_at
+              o.name as org_name, COALESCE(o.plan, 'Pro') as org_plan, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone, o.created_at as org_created_at
        FROM users u
        JOIN roles r ON u.role_id = r.id
        LEFT JOIN departments d ON u.department_id = d.id
@@ -100,6 +100,7 @@ export async function authenticateUser(
         ? {
             id: user.organization_id,
             name: user.org_name,
+            plan: user.org_plan || "Pro",
             timezone: user.timezone,
             subscription_status: user.subscription_status,
             trial_ends_at: user.trial_ends_at,
