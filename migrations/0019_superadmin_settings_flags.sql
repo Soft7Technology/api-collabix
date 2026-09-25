@@ -52,6 +52,6 @@ VALUES
   ('support_email', 'support@soft7.in'),
   ('default_timezone', 'IST — Asia/Kolkata'),
   ('accent_color', '#3cdb73'),
-  ('public_api_key', 'pk_live_51H8x9J2kL3mN4pQ5rS6tU7vW8xY0z1a2b3c4d5e6f7g8h9i'),
-  ('webhook_secret', 'whsec_9F2b8K1L4mN7pQ0rS3tU6vW9xY2z5a8b1c4d7e0f3g6h9i2j')
+  ('public_api_key', 'pk_live_default_demo_key'),
+  ('webhook_secret', 'whsec_default_demo_secret')
 ON CONFLICT (key) DO NOTHING;
