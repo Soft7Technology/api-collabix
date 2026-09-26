@@ -759,4 +759,80 @@ export class AuthController {
       res.status(400).json({ error: { message: error.message, status: 400 } });
     }
   }
+
+  /**
+   * GET /auth/subscription
+   */
+  static async getSubscription(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = (req as any).user;
+      if (!user || !user.organization_id) {
+        res.status(200).json({ subscription: { subscription: null } });
+        return;
+      }
+
+      const { rows } = await db.query(
+        `SELECT id, name, COALESCE(plan, 'Pro') AS plan, subscription_status, trial_ends_at, created_at
+         FROM organizations WHERE id = $1;`,
+        [user.organization_id],
+      );
+
+      const org = rows[0];
+      if (!org) {
+        res.status(200).json({ subscription: { subscription: null } });
+        return;
+      }
+
+      const planName = org.plan || "Pro";
+      const status = org.subscription_status || "active";
+
+      const subscriptionObj = {
+        id: org.id,
+        planName,
+        billingCycle: "monthly",
+        status: status,
+        currentPeriodStart: org.created_at || new Date().toISOString(),
+        currentPeriodEnd: org.trial_ends_at || null,
+        startedAt: org.created_at || new Date().toISOString(),
+        cancelledAt: null,
+        cancelAtPeriodEnd: false,
+      };
+
+      res.status(200).json({
+        subscription: {
+          subscription: subscriptionObj,
+        },
+      });
+    } catch (error: any) {
+      res.status(200).json({ subscription: { subscription: null } });
+    }
+  }
+
+  /**
+   * POST /auth/subscription/cancel
+   */
+  static async cancelSubscription(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = (req as any).user;
+      if (!user || !user.organization_id) {
+        res.status(400).json({ error: { message: "Organization ID is missing.", status: 400 } });
+        return;
+      }
+
+      // Mark organization subscription as cancelled / expired
+      await db.query(
+        `UPDATE organizations
+         SET subscription_status = 'expired', updated_at = NOW()
+         WHERE id = $1;`,
+        [user.organization_id],
+      );
+
+      res.json({
+        success: true,
+        message: "Subscription successfully cancelled.",
+      });
+    } catch (error: any) {
+      res.status(400).json({ error: { message: error.message, status: 400 } });
+    }
+  }
 }

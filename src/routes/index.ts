@@ -302,5 +302,12 @@ router.post("/support/tickets/:id/replies", SupportController.createTenantTicket
 // controller action with an explicit is_super_admin check.
 router.use("/super", superRouter);
 
+// Organization Subscription endpoints (under /api)
+router.get("/subscription", AuthController.getSubscription);
+router.post("/subscription", AuthController.updateSubscription);
+router.post("/subscription/cancel", AuthController.cancelSubscription);
+router.post("/subscription/create-order", AuthController.createSubscriptionOrder);
+router.post("/subscription/verify", AuthController.verifySubscriptionPayment);
+
 export { router };
 export default router;

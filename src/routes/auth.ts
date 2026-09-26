@@ -31,7 +31,9 @@ router.post("/logout", AuthController.logout);
 router.get("/me", authenticateUser, AuthController.me);
 
 // Organization Subscription Upgrade/Renewal
+router.get("/subscription", authenticateUser, AuthController.getSubscription);
 router.post("/subscription", authenticateUser, AuthController.updateSubscription);
+router.post("/subscription/cancel", authenticateUser, AuthController.cancelSubscription);
 router.post("/subscription/create-order", authenticateUser, AuthController.createSubscriptionOrder);
 router.post("/subscription/verify", authenticateUser, AuthController.verifySubscriptionPayment);
 
