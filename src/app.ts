@@ -10,12 +10,19 @@ import { router as authRouter } from "./routes/auth.js";
 import { authenticateUser } from "./middleware/authenticate.js";
 import { validateCSRF } from "./middleware/csrf.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { AuthController } from "../src/modules/auth/authController.js";
 
 const app = express();
 
 // Middlewares
 app.use(helmet());
 app.use(cookieParser());
+
+app.post("/auth/subscription/webhook",
+  express.raw({type: "application/json"}),
+  AuthController.razorpayWebhook
+)
+
 app.use(express.json());
 
 // Dev logs (morgan)
