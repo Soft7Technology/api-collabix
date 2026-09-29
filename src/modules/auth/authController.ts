@@ -4,7 +4,6 @@ import { AuthService, hashToken } from "../../services/authService.js";
 import { RazorpayService } from "../../services/razorpayService.js";
 import {
   generateAccessToken,
-  generateRefreshToken,
   comparePassword,
   hashPassword,
 } from "../../utils/auth.js";
