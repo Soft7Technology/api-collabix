@@ -16,6 +16,12 @@ function requireSuperAdmin(req: Request, res: Response): boolean {
 }
 
 export class SuperController {
+  static createInvoice(arg0: string, createInvoice: any) {
+      throw new Error("Method not implemented.");
+  }
+  static downloadInvoicePdf(arg0: string, downloadInvoicePdf: any) {
+      throw new Error("Method not implemented.");
+  }
   // ==========================================
   // Organizations
   // ==========================================
@@ -483,41 +489,6 @@ export class SuperController {
       res.json(invoices);
     } catch (error) {
       next(error);
-    }
-  }
-
-  static async createInvoice(req: Request, res: Response, next: NextFunction) {
-    try {
-      if (!requireSuperAdmin(req, res)) return;
-      const { organizationId, plan, amount, status, date } = req.body;
-      if (!organizationId || !plan || !amount) {
-        res.status(400).json({ error: { message: "Organization, plan, and amount are required.", status: 400 } });
-        return;
-      }
-      const invoice = await SuperService.createInvoice({
-        organizationId,
-        plan,
-        amount,
-        status,
-        date,
-      });
-      res.status(201).json(invoice);
-    } catch (error: any) {
-      res.status(400).json({ error: { message: error.message, status: 400 } });
-    }
-  }
-
-  static async downloadInvoicePdf(req: Request, res: Response, next: NextFunction) {
-    try {
-      if (!requireSuperAdmin(req, res)) return;
-      const { id } = req.params;
-      const html = await SuperService.getInvoicePrintableHtml(id);
-      
-      // Serve as printable and rendered HTML invoice
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.send(html);
-    } catch (error: any) {
-      res.status(404).json({ error: { message: error.message, status: 404 } });
     }
   }
 }

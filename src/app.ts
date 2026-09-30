@@ -10,7 +10,7 @@ import { router as authRouter } from "./routes/auth.js";
 import { authenticateUser } from "./middleware/authenticate.js";
 import { validateCSRF } from "./middleware/csrf.js";
 import { errorHandler } from "./middleware/errorHandler.js";
-import { AuthController } from "../src/modules/auth/authController.js";
+import { AuthController } from "./modules/auth/authController.js";
 import { db } from "./db/index.js";
 import { SuperService } from "./services/superService.js";
 
