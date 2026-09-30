@@ -45,14 +45,14 @@ export interface DeploymentItem {
 }
 
 // In-memory fallback dataset for rich demo experience
-let mockRepositories: RepositoryItem[] = [
+const mockRepositories: RepositoryItem[] = [
   {
     id: "repo-1",
     projectId: "p1",
     name: "Collabix Frontend",
     defaultBranch: "main",
     visibility: "private",
-    repoUrl: "https://github.com/Soft7Technology/Collabix.git",
+    repoUrl: "",
     createdAt: "2026-08-01T10:00:00Z",
   },
   {
@@ -70,12 +70,12 @@ let mockRepositories: RepositoryItem[] = [
     name: "Collabix Mobile App",
     defaultBranch: "main",
     visibility: "private",
-    repoUrl: "https://github.com/Soft7Technology/collabix-mobile.git",
+    repoUrl: "",
     createdAt: "2026-08-02T11:00:00Z",
   },
 ];
 
-let mockBranches: Record<string, Array<{ name: string; isDefault: boolean; aheadBehind: string }>> = {
+const mockBranches: Record<string, Array<{ name: string; isDefault: boolean; aheadBehind: string }>> = {
   "repo-1": [
     { name: "main", isDefault: true, aheadBehind: "0 / 0" },
     { name: "development", isDefault: false, aheadBehind: "3 ahead" },
@@ -91,7 +91,7 @@ let mockBranches: Record<string, Array<{ name: string; isDefault: boolean; ahead
   ],
 };
 
-let mockCommits: CommitItem[] = [
+const mockCommits: CommitItem[] = [
   {
     id: "c-101",
     repoId: "repo-1",
@@ -127,7 +127,7 @@ let mockCommits: CommitItem[] = [
   },
 ];
 
-let mockPRs: PullRequestItem[] = [
+const mockPRs: PullRequestItem[] = [
   {
     id: "pr-1",
     repoId: "repo-1",
@@ -150,7 +150,7 @@ let mockPRs: PullRequestItem[] = [
   },
 ];
 
-let mockDeployments: DeploymentItem[] = [
+const mockDeployments: DeploymentItem[] = [
   {
     id: "dep-1",
     repoId: "repo-1",
@@ -170,6 +170,9 @@ let mockDeployments: DeploymentItem[] = [
 ];
 
 export class RepositoryController {
+  static deleteRepository(arg0: string, requireCodeAccess: (req: Request, res: Response, next: NextFunction) => void, deleteRepository: any) {
+    throw new Error("Method not implemented.");
+  }
   static async getAll(req: Request, res: Response, next: NextFunction) {
     try {
       const { projectId } = req.query;
