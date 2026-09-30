@@ -751,6 +751,24 @@ export class SuperService {
    * Retrieves all security settings / policies.
    */
   static async getSecurityPolicies() {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS system_security_settings (
+        id VARCHAR(50) PRIMARY KEY,
+        label VARCHAR(255) NOT NULL,
+        sub VARCHAR(255) NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+      INSERT INTO system_security_settings (id, label, sub, enabled)
+      VALUES 
+        ('2fa', 'Enforce 2FA for all org admins', 'Applies across every organization', TRUE),
+        ('sso', 'Require SSO for Enterprise plan', 'Google Workspace / Okta / Azure AD', FALSE),
+        ('ip', 'IP allow-listing', 'Restrict platform admin console by IP', FALSE),
+        ('auto', 'Auto-suspend on repeated breach attempts', 'Lock org after 5 failed admin logins', TRUE),
+        ('maint', 'System Maintenance Mode', 'Block all non-superadmin traffic and customer logins', FALSE)
+      ON CONFLICT (id) DO NOTHING;
+    `);
+
     const { rows } = await db.query(
       `SELECT id, label, sub, enabled FROM system_security_settings ORDER BY id ASC;`,
     );
@@ -770,6 +788,12 @@ export class SuperService {
     );
     if (!rows[0]) {
       throw new Error(`Security policy '${id}' not found.`);
+    }
+
+    if (id === "maint" || id === "maintenance") {
+      maintenanceModeCache = { active: enabled, timestamp: Date.now() };
+    } else {
+      maintenanceModeCache = null;
     }
 
     await SuperService.logAudit(

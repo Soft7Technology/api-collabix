@@ -210,6 +210,10 @@ router.patch(
   MeetingController.updateMeeting,
 );
 router.delete("/meetings/:id", MeetingController.deleteMeeting);
+router.get("/meetings/:id/messages", MeetingController.getMessages);
+router.post("/meetings/:id/messages", MeetingController.sendMessage);
+router.get("/team/meetings/:id/messages", MeetingController.getMessages);
+router.post("/team/meetings/:id/messages", MeetingController.sendMessage);
 
 router.get("/leaves", DashboardController.getLeaves);
 router.post("/leaves", DashboardController.createLeave);

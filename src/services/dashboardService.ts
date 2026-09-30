@@ -179,6 +179,8 @@ export class DashboardService {
       endDate: r.end_date,
       status: r.status,
       reason: r.reason,
+      attachmentUrl: r.attachment_url,
+      attachmentName: r.attachment_name,
     }));
   }
 

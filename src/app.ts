@@ -11,7 +11,8 @@ import { authenticateUser } from "./middleware/authenticate.js";
 import { validateCSRF } from "./middleware/csrf.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { AuthController } from "../src/modules/auth/authController.js";
-import { db } from "./db/index.js"
+import { db } from "./db/index.js";
+import { SuperService } from "./services/superService.js";
 
 const app = express();
 
@@ -106,11 +107,11 @@ async function checkSubscription(
   console.log("STATUS",status)
 
 
-  // Block immediately if expired or revoked
-  if (status === "expired" || status === "revoked") {
+  // Block immediately if expired or revoked (and not approved)
+  if ((status === "expired" || status === "revoked") && !is_approved) {
     res.status(402).json({
       error: {
-        message: "Your subscription has expired or was revoked. Subscription required to restore access22.",
+        message: "Your subscription has expired or was revoked. Subscription required to restore access.",
         code: "SUBSCRIPTION_EXPIRED",
         status: 402,
       },
@@ -118,55 +119,45 @@ async function checkSubscription(
     return;
   }
 
-  if (status === "active") {
-  const { rows } = await db.query(
-    `SELECT status, current_period_end, cancel_at_period_end
-     FROM subscriptions
-     WHERE organization_id = $1
-       AND status = 'active'
-     ORDER BY created_at DESC
-     LIMIT 1`,
-    [organizationId],
-  );
+  if (status === "active" || is_approved) {
+    if (organizationId) {
+      const { rows } = await db.query(
+        `SELECT status, current_period_end, cancel_at_period_end
+         FROM subscriptions
+         WHERE organization_id = $1
+           AND status = 'active'
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [organizationId],
+      );
 
-  const subscription = rows[0];
+      const subscription = rows[0];
 
-  if (!subscription) {
-    return res.status(402).json({
-      error: {
-        message: "Active subscription not found.",
-        code: "SUBSCRIPTION_EXPIRED",
-        status: 402,
-      },
-    });
+      if (subscription) {
+        const periodEnded =
+          subscription.current_period_end &&
+          new Date() >= new Date(subscription.current_period_end);
+
+        if (subscription.cancel_at_period_end && periodEnded) {
+          return res.status(402).json({
+            error: {
+              message: "Your subscription has expired.",
+              code: "SUBSCRIPTION_EXPIRED",
+              status: 402,
+            },
+          });
+        }
+      }
+    }
+
+    return next();
   }
-
-  const periodEnded =
-    subscription.current_period_end &&
-    new Date() >= new Date(subscription.current_period_end);
-
-  if (
-    subscription.cancel_at_period_end &&
-    periodEnded
-  ) {
-    return res.status(402).json({
-      error: {
-        message: "Your subscription has expired.",
-        code: "SUBSCRIPTION_EXPIRED",
-        status: 402,
-      },
-    });
-  }
-
-  return next();
-}
 
   // Trial period check
   if (
     status === "trial" ||
     status === "trialing" ||
-    !subscription_status ||
-    is_approved
+    !subscription_status
   ) {
     const trialEnd = trial_ends_at ? new Date(trial_ends_at) : null;
 
@@ -181,15 +172,44 @@ async function checkSubscription(
 
   res.status(402).json({
     error: {
-      message: "Subscription Required: Free trial has ended. Please subscribe to restore access22.",
+      message: "Subscription Required: Free trial has ended. Please subscribe to restore access.",
       code: "SUBSCRIPTION_EXPIRED",
       status: 402,
     },
   });
 }
 
-// Mount API routes (protected with auth, subscription limits, and CSRF validation)
-app.use("/api", authenticateUser, checkSubscription, validateCSRF, apiRouter);
+// Middleware to block non-superadmins during system maintenance mode
+async function checkMaintenanceMode(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+) {
+  try {
+    const isMaint = await SuperService.isMaintenanceModeActive();
+    if (!isMaint) {
+      return next();
+    }
+
+    const user = req.user;
+    if (user && user.is_super_admin) {
+      return next();
+    }
+
+    res.status(503).json({
+      error: {
+        message: "Collabix platform is currently in maintenance mode. Please try again shortly.",
+        code: "MAINTENANCE_MODE",
+        status: 503,
+      },
+    });
+  } catch {
+    next();
+  }
+}
+
+// Mount API routes (protected with auth, maintenance mode check, subscription limits, and CSRF validation)
+app.use("/api", authenticateUser, checkMaintenanceMode, checkSubscription, validateCSRF, apiRouter);
 
 // Global Error Handler
 app.use(errorHandler);

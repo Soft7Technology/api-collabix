@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { AuthService, hashToken } from "../../services/authService.js";
+import { SuperService } from "../../services/superService.js";
 import { RazorpayService } from "../../services/razorpayService.js";
 import {
   generateAccessToken,
@@ -120,6 +121,21 @@ export class AuthController {
               message:
                 "Only platform administrators are allowed to log in here.",
               status: 403,
+            },
+          });
+          return;
+        }
+      }
+
+      // Block non-superadmins during system maintenance mode
+      if (!user.isSuperAdmin) {
+        const isMaint = await SuperService.isMaintenanceModeActive();
+        if (isMaint) {
+          res.status(503).json({
+            error: {
+              message: "Collabix platform is currently undergoing scheduled maintenance. Customer access is temporarily suspended.",
+              code: "MAINTENANCE_MODE",
+              status: 503,
             },
           });
           return;
@@ -294,7 +310,7 @@ export class AuthController {
                 u.github_username AS "githubUsername",
                 r.name AS "roleName", r.rank AS "roleRank",
                 d.name AS "departmentName",
-                o.name AS "orgName", COALESCE(o.plan, 'Pro') AS "orgPlan", o.subscription_status AS "subscriptionStatus", o.trial_ends_at AS "trialEndsAt", o.is_approved AS "orgIsApproved", o.timezone AS "orgTimezone", o.created_at AS "orgCreatedAt"
+                o.name AS "orgName", o.logo_url AS "orgLogoUrl", COALESCE(o.plan, 'Pro') AS "orgPlan", o.subscription_status AS "subscriptionStatus", o.trial_ends_at AS "trialEndsAt", o.is_approved AS "orgIsApproved", o.timezone AS "orgTimezone", o.created_at AS "orgCreatedAt"
          FROM users u
          JOIN roles r ON u.role_id = r.id
          LEFT JOIN departments d ON u.department_id = d.id
@@ -331,6 +347,7 @@ export class AuthController {
           ? {
               id: user.organizationId,
               name: user.orgName,
+              logoUrl: user.orgLogoUrl || null,
               plan: user.orgPlan || "Pro",
               timezone: user.orgTimezone,
               subscriptionStatus: user.subscriptionStatus,
@@ -477,28 +494,48 @@ export class AuthController {
         return;
       }
 
-      const { name, timezone } = req.body;
+      const { name, timezone, logoUrl } = req.body;
 
-      // Check if organization name is already taken
-      const { rows: existing } = await db.query(
-        "SELECT id FROM organizations WHERE LOWER(name) = LOWER($1) AND id != $2;",
-        [name.trim(), req.user.organization_id],
-      );
-      if (existing.length > 0) {
-        res.status(400).json({
-          error: {
-            message:
-              "An organization with this company name is already registered.",
-            status: 400,
-          },
-        });
-        return;
+      if (name && name.trim()) {
+        // Check if organization name is already taken
+        const { rows: existing } = await db.query(
+          "SELECT id FROM organizations WHERE LOWER(name) = LOWER($1) AND id != $2;",
+          [name.trim(), req.user.organization_id],
+        );
+        if (existing.length > 0) {
+          res.status(400).json({
+            error: {
+              message:
+                "An organization with this company name is already registered.",
+              status: 400,
+            },
+          });
+          return;
+        }
       }
 
-      await db.query(
-        "UPDATE organizations SET name = $1, timezone = $2, updated_at = NOW() WHERE id = $3;",
-        [name.trim(), timezone, req.user.organization_id],
-      );
+      const updates: string[] = ["updated_at = NOW()"];
+      const params: any[] = [];
+
+      if (name !== undefined) {
+        params.push(name.trim());
+        updates.push(`name = $${params.length}`);
+      }
+
+      if (timezone !== undefined) {
+        params.push(timezone);
+        updates.push(`timezone = $${params.length}`);
+      }
+
+      if (logoUrl !== undefined) {
+        params.push(logoUrl);
+        updates.push(`logo_url = $${params.length}`);
+      }
+
+      params.push(req.user.organization_id);
+      const queryStr = `UPDATE organizations SET ${updates.join(", ")} WHERE id = $${params.length} RETURNING *;`;
+
+      await db.query(queryStr, params);
 
       res.json({ message: "Organization updated successfully." });
     } catch (error: any) {
