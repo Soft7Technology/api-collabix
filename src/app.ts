@@ -11,6 +11,7 @@ import { authenticateUser } from "./middleware/authenticate.js";
 import { validateCSRF } from "./middleware/csrf.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { AuthController } from "../src/modules/auth/authController.js";
+import { db } from "./db/index.js"
 
 const app = express();
 
@@ -83,7 +84,7 @@ app.get("/api/health", (req, res) => {
 app.use("/auth", authRouter);
 
 // Middleware to enforce active SaaS subscriptions or active trial periods
-function checkSubscription(
+async function checkSubscription(
   req: express.Request,
   res: express.Response,
   next: express.NextFunction,
@@ -100,12 +101,16 @@ function checkSubscription(
 
   const { subscription_status, trial_ends_at, is_approved } = user.organization || {};
   const status = (subscription_status || "").toLowerCase();
+  const organizationId = user.organization?.id
+  console.log("organizationId", organizationId)
+  console.log("STATUS",status)
+
 
   // Block immediately if expired or revoked
   if (status === "expired" || status === "revoked") {
     res.status(402).json({
       error: {
-        message: "Your subscription has expired or was revoked. Subscription required to restore access.",
+        message: "Your subscription has expired or was revoked. Subscription required to restore access22.",
         code: "SUBSCRIPTION_EXPIRED",
         status: 402,
       },
@@ -113,27 +118,70 @@ function checkSubscription(
     return;
   }
 
-  // Active subscription check
-  if (status === "active" || status === "approved") {
-    const now = new Date();
-    const expiry = trial_ends_at ? new Date(trial_ends_at) : null;
-    if (!expiry || isNaN(expiry.getTime()) || now < expiry) {
-      return next();
-    }
+  if (status === "active") {
+  const { rows } = await db.query(
+    `SELECT status, current_period_end, cancel_at_period_end
+     FROM subscriptions
+     WHERE organization_id = $1
+       AND status = 'active'
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [organizationId],
+  );
+
+  const subscription = rows[0];
+
+  if (!subscription) {
+    return res.status(402).json({
+      error: {
+        message: "Active subscription not found.",
+        code: "SUBSCRIPTION_EXPIRED",
+        status: 402,
+      },
+    });
   }
 
-  // Active trial check
-  if (!subscription_status || status === "trial" || status === "trialing" || is_approved) {
-    const now = new Date();
+  const periodEnded =
+    subscription.current_period_end &&
+    new Date() >= new Date(subscription.current_period_end);
+
+  if (
+    subscription.cancel_at_period_end &&
+    periodEnded
+  ) {
+    return res.status(402).json({
+      error: {
+        message: "Your subscription has expired.",
+        code: "SUBSCRIPTION_EXPIRED",
+        status: 402,
+      },
+    });
+  }
+
+  return next();
+}
+
+  // Trial period check
+  if (
+    status === "trial" ||
+    status === "trialing" ||
+    !subscription_status ||
+    is_approved
+  ) {
     const trialEnd = trial_ends_at ? new Date(trial_ends_at) : null;
-    if (!trialEnd || isNaN(trialEnd.getTime()) || now < trialEnd) {
+
+    if (
+      !trialEnd ||
+      isNaN(trialEnd.getTime()) ||
+      new Date() < trialEnd
+    ) {
       return next();
     }
   }
 
   res.status(402).json({
     error: {
-      message: "Subscription Required: Free trial has ended. Please subscribe to restore access.",
+      message: "Subscription Required: Free trial has ended. Please subscribe to restore access22.",
       code: "SUBSCRIPTION_EXPIRED",
       status: 402,
     },

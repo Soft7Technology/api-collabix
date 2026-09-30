@@ -23,6 +23,7 @@ declare global {
     interface Request {
       user?: {
         id: string;
+        name?: string;
         email: string;
         role_id: string;
         permissions: string[];
@@ -36,6 +37,7 @@ declare global {
         organization?: {
           id: string;
           name: string;
+          plan?: string;
           timezone: string;
           subscription_status: string;
           trial_ends_at: string;
