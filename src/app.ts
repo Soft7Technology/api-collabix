@@ -10,13 +10,20 @@ import { router as authRouter } from "./routes/auth.js";
 import { authenticateUser } from "./middleware/authenticate.js";
 import { validateCSRF } from "./middleware/csrf.js";
 import { errorHandler } from "./middleware/errorHandler.js";
-import { SuperService } from "./services/superService.js";
+import { AuthController } from "../src/modules/auth/authController.js";
+import { db } from "./db/index.js"
 
 const app = express();
 
 // Middlewares
 app.use(helmet());
 app.use(cookieParser());
+
+app.post("/auth/subscription/webhook",
+  express.raw({type: "application/json"}),
+  AuthController.razorpayWebhook
+)
+
 app.use(express.json());
 
 // Dev logs (morgan)
@@ -76,39 +83,8 @@ app.get("/api/health", (req, res) => {
 // Mount auth routes (unprotected)
 app.use("/auth", authRouter);
 
-// Middleware to enforce global maintenance mode (Super Admins bypass)
-async function checkMaintenanceMode(
-  req: express.Request,
-  res: express.Response,
-  next: express.NextFunction,
-) {
-  const user = req.user;
-  if (user && user.is_super_admin) {
-    return next();
-  }
-
-  try {
-    const isMaintenance = await SuperService.isMaintenanceModeActive();
-    if (isMaintenance) {
-      res.setHeader("Retry-After", "300");
-      res.status(503).json({
-        error: {
-          message: "The platform is currently undergoing scheduled maintenance. Please try again shortly.",
-          code: "MAINTENANCE_MODE",
-          status: 503,
-        },
-      });
-      return;
-    }
-  } catch (err) {
-    console.error("Failed to check maintenance mode:", err);
-  }
-
-  next();
-}
-
 // Middleware to enforce active SaaS subscriptions or active trial periods
-function checkSubscription(
+async function checkSubscription(
   req: express.Request,
   res: express.Response,
   next: express.NextFunction,
@@ -123,66 +99,97 @@ function checkSubscription(
     return next();
   }
 
-  // Always allow support tickets, user profile updates, organization info, and auth operations
-  // Even if trial/subscription is expired, clients MUST be able to talk to Super Admin support and manage billing!
-  if (
-    req.path.startsWith("/support") ||
-    req.path.startsWith("/super") ||
-    req.path.startsWith("/users") ||
-    req.path.startsWith("/organization") ||
-    req.baseUrl === "/auth"
-  ) {
-    return next();
-  }
-
   const { subscription_status, trial_ends_at, is_approved } = user.organization || {};
   const status = (subscription_status || "").toLowerCase();
+  const organizationId = user.organization?.id
+  console.log("organizationId", organizationId)
+  console.log("STATUS",status)
 
-  // Block immediately if explicitly revoked
-  if (status === "revoked") {
+
+  // Block immediately if expired or revoked
+  if (status === "expired" || status === "revoked") {
     res.status(402).json({
       error: {
-        message: "Your workspace access was revoked by platform administrators.",
-        code: "SUBSCRIPTION_REVOKED",
+        message: "Your subscription has expired or was revoked. Subscription required to restore access22.",
+        code: "SUBSCRIPTION_EXPIRED",
         status: 402,
       },
     });
     return;
   }
 
-  // Active subscription check (approved or active status)
-  if (status === "active" || status === "approved" || is_approved) {
-    const now = new Date();
-    const expiry = trial_ends_at ? new Date(trial_ends_at) : null;
-    if (!expiry || isNaN(expiry.getTime()) || now < expiry) {
-      return next();
-    }
+  if (status === "active") {
+  const { rows } = await db.query(
+    `SELECT status, current_period_end, cancel_at_period_end
+     FROM subscriptions
+     WHERE organization_id = $1
+       AND status = 'active'
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [organizationId],
+  );
+
+  const subscription = rows[0];
+
+  if (!subscription) {
+    return res.status(402).json({
+      error: {
+        message: "Active subscription not found.",
+        code: "SUBSCRIPTION_EXPIRED",
+        status: 402,
+      },
+    });
   }
 
-  // Active trial check
-  if (!subscription_status || status === "trial" || status === "trialing") {
-    const now = new Date();
+  const periodEnded =
+    subscription.current_period_end &&
+    new Date() >= new Date(subscription.current_period_end);
+
+  if (
+    subscription.cancel_at_period_end &&
+    periodEnded
+  ) {
+    return res.status(402).json({
+      error: {
+        message: "Your subscription has expired.",
+        code: "SUBSCRIPTION_EXPIRED",
+        status: 402,
+      },
+    });
+  }
+
+  return next();
+}
+
+  // Trial period check
+  if (
+    status === "trial" ||
+    status === "trialing" ||
+    !subscription_status ||
+    is_approved
+  ) {
     const trialEnd = trial_ends_at ? new Date(trial_ends_at) : null;
-    if (!trialEnd || isNaN(trialEnd.getTime()) || now < trialEnd) {
+
+    if (
+      !trialEnd ||
+      isNaN(trialEnd.getTime()) ||
+      new Date() < trialEnd
+    ) {
       return next();
     }
   }
-
-  const expiryFormatted = trial_ends_at
-    ? new Date(trial_ends_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-    : "recently";
 
   res.status(402).json({
     error: {
-      message: `Action Restricted: Your workspace subscription expired on ${expiryFormatted}. Read-only access is enabled. Please renew your plan to create or modify tasks, projects, or tracking sessions.`,
+      message: "Subscription Required: Free trial has ended. Please subscribe to restore access22.",
       code: "SUBSCRIPTION_EXPIRED",
       status: 402,
     },
   });
 }
 
-// Mount API routes (protected with auth, maintenance mode, subscription limits, and CSRF validation)
-app.use("/api", authenticateUser, checkMaintenanceMode, checkSubscription, validateCSRF, apiRouter);
+// Mount API routes (protected with auth, subscription limits, and CSRF validation)
+app.use("/api", authenticateUser, checkSubscription, validateCSRF, apiRouter);
 
 // Global Error Handler
 app.use(errorHandler);

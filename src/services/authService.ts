@@ -1115,7 +1115,7 @@ static async handleRazorpayWebhook(payload: any) {
       break;
 
    case "subscription.cancelled": {
-   await pool.query(
+  const result = await pool.query(
     `UPDATE subscriptions
      SET status = 'cancelled',
          cancel_at_period_end = FALSE,
@@ -1126,8 +1126,21 @@ static async handleRazorpayWebhook(payload: any) {
     [subscription.id],
   );
 
+  const organizationId = result.rows[0]?.organization_id;
+
+  if (organizationId) {
+    await pool.query(
+      `UPDATE organizations
+       SET subscription_status = 'EXPIRED',
+           trial_ends_at = NULL,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [organizationId],
+    );
+  }
+
   break;
-   }
+}
 
     case "subscription.completed": {
   await pool.query(
@@ -1141,7 +1154,6 @@ static async handleRazorpayWebhook(payload: any) {
   await pool.query(
     `UPDATE organizations
      SET subscription_status = 'EXPIRED',
-         trial_ends_at = NULL,
          updated_at = NOW()
      WHERE id = (
        SELECT organization_id
