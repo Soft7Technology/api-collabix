@@ -6,6 +6,8 @@ export interface LeaveInput {
   startDate: string;
   endDate: string;
   reason?: string;
+  attachmentUrl?: string;
+  attachmentName?: string;
 }
 
 export class LeaveService {
@@ -29,6 +31,8 @@ export class LeaveService {
       endDate: r.end_date,
       status: r.status,
       reason: r.reason,
+      attachmentUrl: r.attachment_url,
+      attachmentName: r.attachment_name,
     };
   }
 
@@ -41,8 +45,8 @@ export class LeaveService {
     }
 
     const { rows } = await db.query(
-      `INSERT INTO leaves (id, member_id, type, start_date, end_date, status, reason, organization_id)
-       VALUES ($1, $2, $3, $4, $5, 'PENDING', $6, $7)
+      `INSERT INTO leaves (id, member_id, type, start_date, end_date, status, reason, attachment_url, attachment_name, organization_id)
+       VALUES ($1, $2, $3, $4, $5, 'PENDING', $6, $7, $8, $9)
        RETURNING *;`,
       [
         id,
@@ -51,6 +55,8 @@ export class LeaveService {
         leave.startDate,
         leave.endDate,
         leave.reason || null,
+        leave.attachmentUrl || null,
+        leave.attachmentName || null,
         resolvedOrgId || null,
       ],
     );
@@ -64,6 +70,8 @@ export class LeaveService {
       endDate: created.end_date,
       status: created.status,
       reason: created.reason,
+      attachmentUrl: created.attachment_url,
+      attachmentName: created.attachment_name,
     };
   }
 
@@ -92,6 +100,8 @@ export class LeaveService {
       endDate: updated.end_date,
       status: updated.status,
       reason: updated.reason,
+      attachmentUrl: updated.attachment_url,
+      attachmentName: updated.attachment_name,
     };
   }
 
@@ -115,6 +125,8 @@ export class LeaveService {
       endDate: deleted.end_date,
       status: deleted.status,
       reason: deleted.reason,
+      attachmentUrl: deleted.attachment_url,
+      attachmentName: deleted.attachment_name,
     };
   }
 }

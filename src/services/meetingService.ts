@@ -616,4 +616,69 @@ export class MeetingService {
       client.release();
     }
   }
+
+  static async getMeetingMessages(meetingId: string, organizationId?: string | null) {
+    let query = "SELECT * FROM meeting_messages WHERE meeting_id = $1";
+    const params: any[] = [meetingId];
+    if (organizationId) {
+      query += " AND (organization_id = $2 OR organization_id IS NULL)";
+      params.push(organizationId);
+    }
+    query += " ORDER BY created_at ASC;";
+
+    const { rows } = await db.query(query, params);
+    return rows.map((r) => ({
+      id: r.id,
+      meetingId: r.meeting_id,
+      senderId: r.sender_id,
+      senderName: r.sender_name,
+      senderAvatarColor: r.sender_avatar_color || "#D96B43",
+      senderInitials: r.sender_initials || "ME",
+      text: r.text,
+      timestamp: new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      createdAt: r.created_at,
+    }));
+  }
+
+  static async createMeetingMessage(
+    meetingId: string,
+    data: { text: string; senderName?: string; senderAvatarColor?: string; senderInitials?: string },
+    organizationId?: string | null,
+    user?: any
+  ) {
+    const id = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const senderId = user?.id || "guest";
+    const senderName = user?.name || data.senderName || "Attendee";
+    const senderAvatarColor = user?.avatarColor || data.senderAvatarColor || "#D96B43";
+    const senderInitials = user?.initials || data.senderInitials || senderName.slice(0, 2).toUpperCase();
+
+    const { rows } = await db.query(
+      `INSERT INTO meeting_messages (id, meeting_id, sender_id, sender_name, sender_avatar_color, sender_initials, text, created_at, organization_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
+       RETURNING *;`,
+      [
+        id,
+        meetingId,
+        senderId,
+        senderName,
+        senderAvatarColor,
+        senderInitials,
+        data.text,
+        organizationId || null,
+      ]
+    );
+
+    const r = rows[0];
+    return {
+      id: r.id,
+      meetingId: r.meeting_id,
+      senderId: r.sender_id,
+      senderName: r.sender_name,
+      senderAvatarColor: r.sender_avatar_color,
+      senderInitials: r.sender_initials,
+      text: r.text,
+      timestamp: new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      createdAt: r.created_at,
+    };
+  }
 }

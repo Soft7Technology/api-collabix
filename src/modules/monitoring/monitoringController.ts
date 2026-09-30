@@ -82,7 +82,7 @@ export class MonitoringController {
         `SELECT captured_at, status FROM screen_logs WHERE user_id = $1 ORDER BY captured_at DESC LIMIT 1;`,
         [userId]
       );
-      let durationSeconds = 0;
+      let durationSeconds = 300;
       if (prevLogRes.rows.length > 0) {
         const prev = prevLogRes.rows[0];
         if (prev.status === "active" || prev.status === "inactive") {
@@ -92,6 +92,8 @@ export class MonitoringController {
               durationSeconds = Math.min(300, Math.floor(elapsed / 1000));
             } else if (elapsed <= 30 * 60 * 1000) {
               // Background throttling compensation: credit standard 5 minutes (300 seconds) if less than 30 minutes elapsed
+              durationSeconds = 300;
+            } else {
               durationSeconds = 300;
             }
           }
