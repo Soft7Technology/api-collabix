@@ -294,7 +294,7 @@ export class AuthController {
                 u.github_username AS "githubUsername",
                 r.name AS "roleName", r.rank AS "roleRank",
                 d.name AS "departmentName",
-                o.name AS "orgName", o.subscription_status AS "subscriptionStatus", o.trial_ends_at AS "trialEndsAt", o.is_approved AS "orgIsApproved", o.timezone AS "orgTimezone", o.created_at AS "orgCreatedAt"
+                o.name AS "orgName", COALESCE(o.plan, 'Pro') AS "orgPlan", o.subscription_status AS "subscriptionStatus", o.trial_ends_at AS "trialEndsAt", o.is_approved AS "orgIsApproved", o.timezone AS "orgTimezone", o.created_at AS "orgCreatedAt"
          FROM users u
          JOIN roles r ON u.role_id = r.id
          LEFT JOIN departments d ON u.department_id = d.id
@@ -331,6 +331,7 @@ export class AuthController {
           ? {
               id: user.organizationId,
               name: user.orgName,
+              plan: user.orgPlan || "Pro",
               timezone: user.orgTimezone,
               subscriptionStatus: user.subscriptionStatus,
               trialEndsAt: user.trialEndsAt,
@@ -747,6 +748,17 @@ export class AuthController {
   }
 
   /**
+   * POST /auth/subscription/create-order
+   */
+  static async createSubscriptionOrder(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    return AuthController.updateSubscription(req, res, next);
+  }
+
+  /**
    * POST /auth/subscription/cancel
    */
   static async cancelSubscription(
@@ -830,6 +842,54 @@ export class AuthController {
       res.json({ subscription });
     } catch (error) {
       next(error);
+    }
+  }
+
+  /**
+   * GET /auth/subscription
+   */
+  static async getSubscription(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = (req as any).user;
+      if (!user || !user.organization_id) {
+        res.status(200).json({ subscription: { subscription: null } });
+        return;
+      }
+
+      const { rows } = await db.query(
+        `SELECT id, name, COALESCE(plan, 'Pro') AS plan, subscription_status, trial_ends_at, created_at
+         FROM organizations WHERE id = $1;`,
+        [user.organization_id],
+      );
+
+      const org = rows[0];
+      if (!org) {
+        res.status(200).json({ subscription: { subscription: null } });
+        return;
+      }
+
+      const planName = org.plan || "Pro";
+      const status = org.subscription_status || "active";
+
+      const subscriptionObj = {
+        id: org.id,
+        planName,
+        billingCycle: "monthly",
+        status: status,
+        currentPeriodStart: org.created_at || new Date().toISOString(),
+        currentPeriodEnd: org.trial_ends_at || null,
+        startedAt: org.created_at || new Date().toISOString(),
+        cancelledAt: null,
+        cancelAtPeriodEnd: false,
+      };
+
+      res.status(200).json({
+        subscription: {
+          subscription: subscriptionObj,
+        },
+      });
+    } catch (error: any) {
+      res.status(200).json({ subscription: { subscription: null } });
     }
   }
 }

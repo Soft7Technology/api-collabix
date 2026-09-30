@@ -33,10 +33,15 @@ import {
   createBranchSchema,
   createMeetingSchema,
   updateMeetingSchema,
+  createWorkReportSchema,
+  updateWorkReportSchema,
+  reviewWorkReportSchema,
 } from "../schemas/index.js";
 import { RepositoryController } from "../modules/system/repositoryController.js";
 import { GithubController } from "../modules/system/githubController.js";
 import { MeetingController } from "../modules/meeting/meetingController.js";
+import { DocumentationController } from "../modules/documentation/documentationController.js";
+import { SupportController } from "../modules/system/supportController.js";
 
 
 const router = Router();
@@ -213,6 +218,27 @@ router.delete("/leaves/:id", DashboardController.deleteLeave);
 
 router.get("/activity", DashboardController.getActivity);
 
+// Work Documentation Reports routes
+router.get("/documentation/reports", DocumentationController.getAll);
+router.get("/documentation/reports/summary", DocumentationController.getSummary);
+router.get("/documentation/reports/:id", DocumentationController.getById);
+router.post(
+  "/documentation/reports",
+  validate(createWorkReportSchema),
+  DocumentationController.create,
+);
+router.patch(
+  "/documentation/reports/:id",
+  validate(updateWorkReportSchema),
+  DocumentationController.update,
+);
+router.post(
+  "/documentation/reports/:id/review",
+  validate(reviewWorkReportSchema),
+  DocumentationController.review,
+);
+router.delete("/documentation/reports/:id", DocumentationController.delete);
+
 import { UploadController, attachmentMulter } from "../modules/system/uploadController.js";
 
 // Attachment Upload & Streaming Routes (Cloudflare R2 Proxy)
@@ -266,10 +292,22 @@ router.get("/github/repos", requireCodeAccess, GithubController.getRepos);
 router.post("/github/disconnect", requireCodeAccess, GithubController.disconnect);
 router.post("/github/webhook", GithubController.handleWebhook);
 
+// Tenant Help & Support Tickets
+router.get("/support/tickets", SupportController.getTenantTickets);
+router.post("/support/tickets", SupportController.createTenantTicket);
+router.get("/support/tickets/:id/replies", SupportController.getTenantTicketReplies);
+router.post("/support/tickets/:id/replies", SupportController.createTenantTicketReply);
 
 // Platform administration stays in this API and is guarded again inside each
 // controller action with an explicit is_super_admin check.
 router.use("/super", superRouter);
+
+// Organization Subscription endpoints (under /api)
+router.get("/subscription", AuthController.getSubscription);
+router.post("/subscription", AuthController.updateSubscription);
+router.post("/subscription/cancel", AuthController.cancelSubscription);
+router.post("/subscription/create-order", AuthController.createSubscriptionOrder);
+router.post("/subscription/verify", AuthController.verifySubscriptionPayment);
 
 export { router };
 export default router;

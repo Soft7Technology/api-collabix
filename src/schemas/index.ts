@@ -288,5 +288,111 @@ export const updateMeetingSchema = z.object({
   }),
 });
 
+// Documentation Work Reports schemas
+export const createWorkReportSchema = z.object({
+  body: z.object({
+    title: z.string().min(1, "Title is required"),
+    type: z.enum(["weekly", "monthly", "yearly"]).default("weekly"),
+    period: z.string().min(1, "Period is required"),
+    startDate: z.string().optional().default(""),
+    endDate: z.string().optional().default(""),
+    dateRange: z
+      .object({
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+      })
+      .optional(),
+    project: z.string().optional().default(""),
+    projectId: z.string().nullable().optional(),
+    projectName: z.string().optional(),
+    workCategory: z.string().optional().default("Development"),
+    summary: z.string().optional().default(""),
+    tasks: z
+      .array(
+        z.object({
+          id: z.string().optional(),
+          title: z.string(),
+          project: z.string().optional().default(""),
+          status: z.enum(["completed", "in_progress", "todo", "blocked"]).default("completed"),
+          hours: z.number().optional().default(0),
+          priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
+        })
+      )
+      .optional()
+      .default([]),
+    achievements: z.array(z.string()).optional().default([]),
+    challenges: z.string().optional().default(""),
+    challengesStatus: z.enum(["resolved", "in_progress", "blocked"]).optional().default("resolved"),
+    skills: z.array(z.string()).optional().default([]),
+    nextGoals: z.array(z.string()).optional().default([]),
+    attachments: z.array(z.any()).optional().default([]),
+    dailyActivities: z.array(z.any()).optional().default([]),
+    projectBreakdowns: z.array(z.any()).optional().default([]),
+    timelineMilestones: z.array(z.any()).optional().default([]),
+    yearlyAchievements: z.array(z.string()).optional().default([]),
+    status: z.enum(["draft", "submitted", "approved", "changes_requested"]).optional().default("draft"),
+    submittedOn: z.string().optional(),
+  }),
+});
+
+export const updateWorkReportSchema = z.object({
+  params: z.object({
+    id: z.string(),
+  }),
+  body: z.object({
+    title: z.string().optional(),
+    type: z.enum(["weekly", "monthly", "yearly"]).optional(),
+    period: z.string().optional(),
+    startDate: z.string().optional(),
+    endDate: z.string().optional(),
+    dateRange: z
+      .object({
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+      })
+      .optional(),
+    project: z.string().optional(),
+    projectId: z.string().nullable().optional(),
+    projectName: z.string().optional(),
+    workCategory: z.string().optional(),
+    summary: z.string().optional(),
+    tasks: z
+      .array(
+        z.object({
+          id: z.string().optional(),
+          title: z.string(),
+          project: z.string().optional().default(""),
+          status: z.enum(["completed", "in_progress", "todo", "blocked"]).default("completed"),
+          hours: z.number().optional().default(0),
+          priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
+        })
+      )
+      .optional(),
+    achievements: z.array(z.string()).optional(),
+    challenges: z.string().optional(),
+    challengesStatus: z.enum(["resolved", "in_progress", "blocked"]).optional(),
+    skills: z.array(z.string()).optional(),
+    nextGoals: z.array(z.string()).optional(),
+    attachments: z.array(z.any()).optional(),
+    dailyActivities: z.array(z.any()).optional(),
+    projectBreakdowns: z.array(z.any()).optional(),
+    timelineMilestones: z.array(z.any()).optional(),
+    yearlyAchievements: z.array(z.string()).optional(),
+    status: z.enum(["draft", "submitted", "approved", "changes_requested"]).optional(),
+    submittedOn: z.string().optional(),
+  }),
+});
+
+export const reviewWorkReportSchema = z.object({
+  params: z.object({
+    id: z.string(),
+  }),
+  body: z.object({
+    action: z.enum(["approve", "request_changes"]),
+    comment: z.string().optional().default(""),
+  }),
+});
+
+
 
 
