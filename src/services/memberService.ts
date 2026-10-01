@@ -52,6 +52,7 @@ export class MemberService {
       SELECT u.*, d.name as department_name, sys_role.name as system_role_name, sys_role.rank as system_role_rank,
         (SELECT status FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_status,
         (SELECT screenshot_path FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_path,
+        (SELECT captured_at FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_time,
         (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.status = 'active' OR sl.status = 'inactive' OR (sl.status = 'stopped' AND sl.duration_seconds > 0)) AND ${dateCondition}) as today_seconds,
         (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'lunch' AND ${dateCondition}) as today_lunch_seconds,
         (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'inactive' AND ${dateCondition}) as today_idle_seconds,
