@@ -2,6 +2,27 @@ import { Request, Response, NextFunction } from "express";
 import { MeetingService } from "../../services/meetingService.js";
 import { DashboardService } from "../../services/dashboardService.js";
 
+// In-memory sliding window rate limiter for instant meetings (DoS prevention)
+const instantMeetingRateMap = new Map<string, number[]>();
+const INSTANT_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+const INSTANT_MAX_CREATIONS = 5; // Max 5 instant meetings per 10 mins per user
+
+function checkInstantMeetingRateLimit(userId: string): { allowed: boolean; retryAfterSeconds: number } {
+  const now = Date.now();
+  const timestamps = instantMeetingRateMap.get(userId) || [];
+  const activeTimestamps = timestamps.filter((t) => now - t < INSTANT_LIMIT_WINDOW_MS);
+
+  if (activeTimestamps.length >= INSTANT_MAX_CREATIONS) {
+    const oldest = activeTimestamps[0];
+    const retryAfterSeconds = Math.max(1, Math.ceil((oldest + INSTANT_LIMIT_WINDOW_MS - now) / 1000));
+    return { allowed: false, retryAfterSeconds };
+  }
+
+  activeTimestamps.push(now);
+  instantMeetingRateMap.set(userId, activeTimestamps);
+  return { allowed: true, retryAfterSeconds: 0 };
+}
+
 export class MeetingController {
   static async getMeetings(req: Request, res: Response, next: NextFunction) {
     try {
@@ -113,7 +134,11 @@ export class MeetingController {
       }
 
       res.json(meeting);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.status === 403) {
+        res.status(403).json({ error: { message: error.message || "Forbidden: Access denied", status: 403 } });
+        return;
+      }
       next(error);
     }
   }
@@ -149,7 +174,11 @@ export class MeetingController {
       }
 
       res.json(meeting);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.status === 403) {
+        res.status(403).json({ error: { message: error.message || "Forbidden: Access denied", status: 403 } });
+        return;
+      }
       next(error);
     }
   }
@@ -157,6 +186,33 @@ export class MeetingController {
   static async createInstantMeeting(req: Request, res: Response, next: NextFunction) {
     try {
       const organizationId = req.user?.organization_id || null;
+      const userId = req.user?.id || "anonymous";
+
+      // 1. Sliding window rate limiting
+      const rateCheck = checkInstantMeetingRateLimit(userId);
+      if (!rateCheck.allowed) {
+        res.status(429).json({
+          error: {
+            message: `Rate limit reached: Maximum 5 instant meetings per 10 minutes. Please retry in ${rateCheck.retryAfterSeconds}s.`,
+            status: 429,
+            retryAfterSeconds: rateCheck.retryAfterSeconds,
+          },
+        });
+        return;
+      }
+
+      // 2. Background cleanup of stale instant meetings
+      MeetingService.cleanupStaleInstantMeetings(organizationId).catch(() => {});
+
+      // 3. Active Room Reuse: If user already has an active live room, reuse it unless explicitly forced
+      if (req.user?.id && !req.body.forceNew) {
+        const activeExisting = await MeetingService.findActiveInstantMeeting(req.user.id, organizationId);
+        if (activeExisting) {
+          res.status(200).json(activeExisting);
+          return;
+        }
+      }
+
       const now = new Date();
       const dateStr = now.toISOString().split("T")[0];
       const startHours = String(now.getHours()).padStart(2, "0");
@@ -197,6 +253,32 @@ export class MeetingController {
       }
 
       res.status(201).json(meeting);
+    } catch (error: any) {
+      if (error?.status === 403 || error?.status === 429) {
+        res.status(error.status).json({ error: { message: error.message, status: error.status } });
+        return;
+      }
+      next(error);
+    }
+  }
+
+  static async verifyPasscode(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { passcode } = req.body;
+      const organizationId = req.user?.organization_id || null;
+
+      const result = await MeetingService.verifyPasscode(id, passcode, organizationId);
+      if (!result.valid) {
+        res.status(401).json({ error: { message: result.message || "Invalid passcode", status: 401 } });
+        return;
+      }
+
+      res.json({
+        valid: true,
+        meetingLink: result.meetingLink,
+        platform: result.platform,
+      });
     } catch (error) {
       next(error);
     }

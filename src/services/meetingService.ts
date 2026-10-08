@@ -44,6 +44,15 @@ export interface UpdateMeetingInput {
   attendees?: string[];
 }
 
+export interface MeetingUserContext {
+  id: string;
+  roleName?: string;
+  roleRank?: number;
+  departmentId?: string | null;
+  organizationId?: string | null;
+  isSuperAdmin?: boolean;
+}
+
 export interface MeetingFilters {
   tab?: "upcoming" | "past";
   team?: string;
@@ -51,7 +60,7 @@ export interface MeetingFilters {
   search?: string;
   date?: string;
   organizationId?: string | null;
-  userCtx?: any;
+  userCtx?: MeetingUserContext;
 }
 
 export class MeetingService {
@@ -109,7 +118,7 @@ export class MeetingService {
   /**
    * Format raw meeting SQL row into rich frontend-compatible Meeting object
    */
-  private static formatMeetingRow(row: any) {
+  private static formatMeetingRow(row: any, userCtx?: any) {
     const agenda = Array.isArray(row.agenda)
       ? row.agenda
       : typeof row.agenda === "string"
@@ -117,6 +126,19 @@ export class MeetingService {
       : [];
 
     const durationMins = row.duration_minutes || 30;
+
+    const attendees = row.attendees_json || [];
+    const isHost = userCtx?.id && row.host_id === userCtx.id;
+    const isAttendee = userCtx?.id && attendees.some((att: any) => att.id === userCtx.id);
+    const isSuperAdmin = userCtx?.isSuperAdmin || userCtx?.is_super_admin;
+    const roleRank = userCtx?.roleRank ?? userCtx?.role_rank ?? 4;
+    const roleName = (userCtx?.roleName || userCtx?.role_name || "").toLowerCase();
+    const isAdmin = isSuperAdmin || roleRank <= 1 || roleName === "admin" || roleName === "super admin";
+
+    // Passcode security: Only Host, Invited Attendees, or Workspace Admins can view the plaintext passcode
+    const canViewPasscode = isHost || isAttendee || isAdmin;
+    const hasPasscode = Boolean(row.passcode && row.passcode.trim().length > 0);
+    const visiblePasscode = canViewPasscode ? (row.passcode || "") : (hasPasscode ? "••••••" : "");
 
     return {
       id: row.id,
@@ -128,7 +150,10 @@ export class MeetingService {
         row.meeting_link ||
         `https://teams.microsoft.com/l/meetup-join/collabix-${row.id}`,
       meetingCode: row.meeting_code || "",
-      passcode: row.passcode || "",
+      passcode: visiblePasscode,
+      hasPasscode,
+      isHost: Boolean(isHost),
+      isAttendee: Boolean(isAttendee),
       team: row.team_department || "General",
       teamDepartment: row.team_department || "General",
       description: row.description || "",
@@ -265,7 +290,7 @@ export class MeetingService {
     `;
 
     const { rows } = await db.query(queryStr, params);
-    return rows.map((r) => MeetingService.formatMeetingRow(r));
+    return rows.map((r) => MeetingService.formatMeetingRow(r, filters.userCtx));
   }
 
   /**
@@ -274,14 +299,7 @@ export class MeetingService {
   static async getById(
     id: string,
     organizationId?: string | null,
-    userCtx?: {
-      id: string;
-      roleName: string;
-      roleRank: number;
-      departmentId: string | null;
-      organizationId?: string | null;
-      isSuperAdmin?: boolean;
-    }
+    userCtx?: MeetingUserContext
   ) {
     let queryStr = `
       SELECT 
@@ -334,7 +352,7 @@ export class MeetingService {
 
     const { rows } = await db.query(queryStr, params);
     if (!rows[0]) return null;
-    return MeetingService.formatMeetingRow(rows[0]);
+    return MeetingService.formatMeetingRow(rows[0], userCtx);
   }
 
   /**
@@ -410,7 +428,17 @@ export class MeetingService {
       }
 
       await client.query("COMMIT;");
-      return await MeetingService.getById(created.id, organizationId);
+      const hostCtx = hostUser
+        ? {
+            id: hostUser.id,
+            roleRank: hostUser.role_rank ?? (hostUser.is_super_admin ? 0 : 4),
+            isSuperAdmin: hostUser.is_super_admin || false,
+          }
+        : hostId
+        ? { id: hostId, roleRank: 4 }
+        : undefined;
+
+      return await MeetingService.getById(created.id, organizationId, hostCtx);
     } catch (error) {
       await client.query("ROLLBACK;");
       throw error;
@@ -420,39 +448,194 @@ export class MeetingService {
   }
 
   /**
-   * Update an existing meeting
+   * Find existing active live instant meeting for a host created recently (prevents unbound duplicate room creation)
+   */
+  static async findActiveInstantMeeting(hostId: string, organizationId?: string | null) {
+    if (!hostId) return null;
+    let queryStr = `
+      SELECT m.*,
+        u.name as host_name,
+        u.email as host_email,
+        u.avatar_color as host_avatar_color,
+        u.initials as host_initials,
+        p.name as project_name,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', att_u.id,
+              'name', att_u.name,
+              'email', att_u.email,
+              'avatarColor', att_u.avatar_color,
+              'initials', att_u.initials,
+              'role', ma.role,
+              'status', ma.status
+            )
+          ) FILTER (WHERE att_u.id IS NOT NULL),
+          '[]'::json
+        ) as attendees_json
+      FROM meetings m
+      LEFT JOIN users u ON m.host_id = u.id
+      LEFT JOIN projects p ON m.project_id = p.id
+      LEFT JOIN meeting_attendees ma ON m.id = ma.meeting_id
+      LEFT JOIN users att_u ON ma.member_id = att_u.id
+      WHERE m.host_id = $1
+        AND m.status = 'live'
+        AND m.created_at >= NOW() - INTERVAL '45 minutes'
+    `;
+    const params: any[] = [hostId];
+    if (organizationId) {
+      queryStr += " AND (m.organization_id = $2 OR m.organization_id IS NULL)";
+      params.push(organizationId);
+    }
+    queryStr += " GROUP BY m.id, u.id, p.id ORDER BY m.created_at DESC LIMIT 1;";
+
+    const { rows } = await db.query(queryStr, params);
+    if (!rows[0]) return null;
+    return MeetingService.formatMeetingRow(rows[0], { id: hostId, roleRank: 4 });
+  }
+
+  /**
+   * Auto-cleanup stale instant/live meetings older than 2 hours
+   */
+  static async cleanupStaleInstantMeetings(organizationId?: string | null) {
+    try {
+      let queryStr = `
+        UPDATE meetings 
+        SET status = 'completed', updated_at = NOW()
+        WHERE status = 'live'
+          AND created_at < NOW() - INTERVAL '2 hours'
+      `;
+      const params: any[] = [];
+      if (organizationId) {
+        queryStr += " AND (organization_id = $1 OR organization_id IS NULL)";
+        params.push(organizationId);
+      }
+      await db.query(queryStr, params);
+    } catch (err) {
+      console.error("Cleanup stale instant meetings error:", err);
+    }
+  }
+
+  /**
+   * Verify meeting passcode securely
+   */
+  static async verifyPasscode(id: string, passcode: string, organizationId?: string | null) {
+    if (!id || typeof passcode !== "string") {
+      return { valid: false, message: "Meeting ID and passcode are required" };
+    }
+    let queryStr = "SELECT id, passcode, meeting_link, platform FROM meetings WHERE id = $1";
+    const params: any[] = [id];
+    if (organizationId) {
+      queryStr += " AND (organization_id = $2 OR organization_id IS NULL)";
+      params.push(organizationId);
+    }
+    queryStr += ";";
+
+    const { rows } = await db.query(queryStr, params);
+    if (!rows[0]) {
+      return { valid: false, message: "Meeting not found" };
+    }
+
+    const actualPasscode = (rows[0].passcode || "").trim();
+    const inputPasscode = (passcode || "").trim();
+
+    if (actualPasscode === "" || actualPasscode === inputPasscode) {
+      return {
+        valid: true,
+        meetingLink:
+          rows[0].meeting_link ||
+          `https://teams.microsoft.com/l/meetup-join/collabix-${rows[0].id}`,
+        platform: rows[0].platform || "teams",
+      };
+    }
+
+    return { valid: false, message: "Invalid passcode" };
+  }
+
+  /**
+   * Update an existing meeting with strict Host / Admin authorization checks
    */
   static async update(
     id: string,
     patch: UpdateMeetingInput,
     organizationId?: string | null,
-    userCtx?: {
-      id: string;
-      roleName: string;
-      roleRank: number;
-      departmentId: string | null;
-      organizationId?: string | null;
-      isSuperAdmin?: boolean;
-    }
+    userCtx?: MeetingUserContext
   ) {
     if (!organizationId) return null;
     const client = await pool.connect();
     try {
       await client.query("BEGIN;");
 
-      let checkQuery = "SELECT id, host_id FROM meetings WHERE id = $1 AND organization_id = $2";
-      const checkParams: any[] = [id, organizationId];
-
-      if (userCtx && !userCtx.isSuperAdmin && (userCtx.roleRank ?? 4) > 1) {
-        checkParams.push(userCtx.id);
-        checkQuery += ` AND (host_id = $3 OR EXISTS (SELECT 1 FROM meeting_attendees WHERE meeting_id = $1 AND member_id = $3))`;
-      }
-      checkQuery += ";";
-
-      const { rows: checkRows } = await client.query(checkQuery, checkParams);
-      if (!checkRows[0]) {
+      // 1. Fetch meeting record to check existence and ownership
+      const { rows: existingRows } = await client.query(
+        "SELECT id, host_id FROM meetings WHERE id = $1 AND organization_id = $2;",
+        [id, organizationId]
+      );
+      if (!existingRows[0]) {
         await client.query("ROLLBACK;");
         return null;
+      }
+
+      const meetingHostId = existingRows[0].host_id;
+
+      // 2. Authorization Checks (BAC)
+      if (userCtx) {
+        const isHost = userCtx.id && meetingHostId === userCtx.id;
+        const roleRank = userCtx.roleRank ?? 4;
+        const roleName = (userCtx.roleName || "").toLowerCase();
+        const isAdmin = Boolean(
+          userCtx.isSuperAdmin ||
+          roleRank <= 2 ||
+          roleName === "admin" ||
+          roleName === "super admin" ||
+          roleName === "manager"
+        );
+
+        if (!isHost && !isAdmin) {
+          // Check if user is an invited attendee
+          const { rows: attRows } = await client.query(
+            "SELECT 1 FROM meeting_attendees WHERE meeting_id = $1 AND member_id = $2;",
+            [id, userCtx.id]
+          );
+          const isAttendee = Boolean(attRows[0]);
+
+          if (!isAttendee) {
+            await client.query("ROLLBACK;");
+            const err: any = new Error("Forbidden: You are not authorized to modify this meeting.");
+            err.status = 403;
+            throw err;
+          }
+
+          // Attendees can only update notes / recordingUrl
+          const coreFieldsChanged = [
+            patch.title,
+            patch.projectId,
+            patch.platform,
+            patch.meetingLink,
+            patch.meetingCode,
+            patch.passcode,
+            patch.hostId,
+            patch.teamDepartment,
+            patch.description,
+            patch.agenda,
+            patch.date,
+            patch.startTime,
+            patch.endTime,
+            patch.durationMinutes,
+            patch.timezone,
+            patch.status,
+            patch.attendees,
+          ].some((val) => val !== undefined);
+
+          if (coreFieldsChanged) {
+            await client.query("ROLLBACK;");
+            const err: any = new Error(
+              "Forbidden: Only the meeting host or organization administrators can modify core meeting details. Attendees may only update meeting notes."
+            );
+            err.status = 403;
+            throw err;
+          }
+        }
       }
 
       const fieldsToUpdate: string[] = [];
@@ -556,7 +739,7 @@ export class MeetingService {
       }
 
       await client.query("COMMIT;");
-      return await MeetingService.getById(id, organizationId);
+      return await MeetingService.getById(id, organizationId, userCtx);
     } catch (error) {
       await client.query("ROLLBACK;");
       throw error;
@@ -566,41 +749,52 @@ export class MeetingService {
   }
 
   /**
-   * Delete or Cancel a meeting
+   * Delete or Cancel a meeting with strict Host / Admin authorization checks
    */
   static async delete(
     id: string,
     organizationId?: string | null,
-    userCtx?: {
-      id: string;
-      roleName: string;
-      roleRank: number;
-      departmentId: string | null;
-      organizationId?: string | null;
-      isSuperAdmin?: boolean;
-    }
+    userCtx?: MeetingUserContext
   ) {
     if (!organizationId) return null;
     const client = await pool.connect();
     try {
       await client.query("BEGIN;");
 
-      let checkQuery = "SELECT id, host_id FROM meetings WHERE id = $1 AND organization_id = $2";
-      const checkParams: any[] = [id, organizationId];
-
-      if (userCtx && !userCtx.isSuperAdmin && (userCtx.roleRank ?? 4) > 1) {
-        checkParams.push(userCtx.id);
-        checkQuery += " AND host_id = $3";
-      }
-      checkQuery += ";";
-
-      const { rows: checkRows } = await client.query(checkQuery, checkParams);
-      if (!checkRows[0]) {
+      // 1. Fetch meeting record to check existence and ownership
+      const { rows: existingRows } = await client.query(
+        "SELECT id, host_id FROM meetings WHERE id = $1 AND organization_id = $2;",
+        [id, organizationId]
+      );
+      if (!existingRows[0]) {
         await client.query("ROLLBACK;");
         return null;
       }
 
-      const existing = await MeetingService.getById(id, organizationId);
+      const meetingHostId = existingRows[0].host_id;
+
+      // 2. Authorization Checks (BAC): Only Host or Admin/Manager can cancel/delete
+      if (userCtx) {
+        const isHost = userCtx.id && meetingHostId === userCtx.id;
+        const roleRank = userCtx.roleRank ?? 4;
+        const roleName = (userCtx.roleName || "").toLowerCase();
+        const isAdmin = Boolean(
+          userCtx.isSuperAdmin ||
+          roleRank <= 2 ||
+          roleName === "admin" ||
+          roleName === "super admin" ||
+          roleName === "manager"
+        );
+
+        if (!isHost && !isAdmin) {
+          await client.query("ROLLBACK;");
+          const err: any = new Error("Forbidden: Only the meeting host or organization administrators can cancel or delete this meeting.");
+          err.status = 403;
+          throw err;
+        }
+      }
+
+      const existing = await MeetingService.getById(id, organizationId, userCtx);
 
       await client.query(
         "DELETE FROM meetings WHERE id = $1 AND organization_id = $2;",

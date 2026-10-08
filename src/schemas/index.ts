@@ -288,6 +288,15 @@ export const updateMeetingSchema = z.object({
   }),
 });
 
+export const verifyPasscodeSchema = z.object({
+  params: z.object({
+    id: z.string().min(1, "Meeting ID is required"),
+  }),
+  body: z.object({
+    passcode: z.string(),
+  }),
+});
+
 // Documentation Work Reports schemas
 export const createWorkReportSchema = z.object({
   body: z.object({
