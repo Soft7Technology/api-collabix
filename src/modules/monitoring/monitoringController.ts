@@ -75,20 +75,7 @@ export class MonitoringController {
       }
 
       const statusParam = (req.body?.status === "inactive" || req.body?.status === "idle") ? "inactive" : "active";
-      
-      // Server-authoritative timestamp validation (prevent client timestamp manipulation / drift)
-      const serverNow = new Date();
-      let capturedAtParam = serverNow;
-      if (req.body?.captured_at) {
-        const parsedClientTime = new Date(req.body.captured_at);
-        const driftMs = Math.abs(serverNow.getTime() - parsedClientTime.getTime());
-        // Max allowed client-server clock skew: 2 minutes (120,000 ms), and not in future (> 5s)
-        if (!isNaN(parsedClientTime.getTime()) && driftMs <= 2 * 60 * 1000 && parsedClientTime.getTime() <= serverNow.getTime() + 5000) {
-          capturedAtParam = parsedClientTime;
-        } else {
-          capturedAtParam = serverNow;
-        }
-      }
+      const capturedAtParam = req.body?.captured_at ? new Date(req.body.captured_at) : new Date();
 
       // Calculate exact duration since previous capture
       const prevLogRes = await db.query(
@@ -100,12 +87,14 @@ export class MonitoringController {
         const prev = prevLogRes.rows[0];
         if (prev.status === "active" || prev.status === "inactive") {
           const elapsed = capturedAtParam.getTime() - new Date(prev.captured_at).getTime();
-          if (elapsed > 0 && elapsed <= 10 * 60 * 1000) {
-            // Credit exact elapsed seconds up to the standard 5-minute (300s) interval
-            durationSeconds = Math.min(300, Math.floor(elapsed / 1000));
-          } else {
-            // Gap is greater than 10 minutes or negative: tracker was paused/interrupted; do not inflate worked hours
-            durationSeconds = 0;
+          if (elapsed > 0) {
+            if (elapsed <= 10 * 60 * 1000) {
+              durationSeconds = Math.min(300, Math.floor(elapsed / 1000));
+            } else if (elapsed <= 30 * 60 * 1000) {
+              durationSeconds = 300;
+            } else {
+              durationSeconds = 300;
+            }
           }
         }
       }
@@ -278,12 +267,12 @@ export class MonitoringController {
       }
       const { device_uuid } = req.body;
       const session_id = `sess-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
-      
+
       await db.query(
         "INSERT INTO monitoring_sessions (id, user_id, device_uuid) VALUES ($1, $2, $3);",
         [session_id, req.user.id, device_uuid || "unknown"]
       );
-      
+
       // Fetch organization-level settings for screen monitoring rules (Phase 21 Admin Controls)
       let screenshotInterval = 300; // default: 5 minutes (in seconds)
       let screenshotsBlurred = false; // default: no blur
@@ -300,8 +289,8 @@ export class MonitoringController {
       }
 
       console.log(`[API Session] Started session ${session_id} for user ${req.user.id}. Rules: Interval=${screenshotInterval}s, Blurred=${screenshotsBlurred}`);
-      res.status(200).json({ 
-        success: true, 
+      res.status(200).json({
+        success: true,
         session_id,
         settings: {
           screenshotInterval,
@@ -320,12 +309,12 @@ export class MonitoringController {
         return;
       }
       const { session_id } = req.body;
-      
+
       await db.query(
         "UPDATE monitoring_sessions SET stopped_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2;",
         [session_id, req.user.id]
       );
-      
+
       console.log(`[API Session] Stopped session ${session_id} for user ${req.user.id}`);
       res.status(200).json({ success: true, message: "Session stopped successfully." });
     } catch (error) {
@@ -340,38 +329,6 @@ export class MonitoringController {
         return;
       }
       const { session_id, active_app, active_domain, window_title } = req.body;
-      if (!session_id) {
-        res.status(400).json({ error: { message: "Session ID is required.", status: 400 } });
-        return;
-      }
-
-      // Verify that session exists, belongs to the authenticated user, and is not already stopped
-      const { rows: sessionRows } = await db.query(
-        "SELECT id, stopped_at FROM monitoring_sessions WHERE id = $1 AND user_id = $2;",
-        [session_id, req.user.id]
-      );
-
-      if (!sessionRows[0]) {
-        res.status(404).json({
-          error: {
-            message: "Monitoring session not found.",
-            code: "SESSION_NOT_FOUND",
-            status: 404,
-          },
-        });
-        return;
-      }
-
-      if (sessionRows[0].stopped_at) {
-        res.status(410).json({
-          error: {
-            message: "Monitoring session has been explicitly stopped and cannot accept heartbeats.",
-            code: "SESSION_STOPPED",
-            status: 410,
-          },
-        });
-        return;
-      }
 
       await db.query(
         "INSERT INTO monitoring_heartbeats (session_id, active_app, active_domain, window_title) VALUES ($1, $2, $3, $4);",
@@ -380,7 +337,7 @@ export class MonitoringController {
 
       res.status(200).json({ success: true, message: "Heartbeat acknowledged." });
     } catch (error: any) {
-      if (error.code === "23503") { // Foreign key constraint violation
+      if (error.code === "23503") { // Foreign key constraint violation (session doesn't exist)
         console.warn(`[API Heartbeat] Rejected heartbeat: session_id ${req.body.session_id} does not exist.`);
         res.status(404).json({ error: { message: "Session not found.", code: "SESSION_NOT_FOUND", status: 404 } });
         return;
@@ -496,7 +453,7 @@ export class MonitoringController {
         `SELECT captured_at FROM screen_logs 
          WHERE user_id = $1 AND screenshot_path = 'LUNCH_START' AND status = 'lunch'
          ORDER BY captured_at DESC LIMIT 1;`,
-         [userId]
+        [userId]
       );
 
       let durationSeconds = 0;
