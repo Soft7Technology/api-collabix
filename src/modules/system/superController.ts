@@ -129,7 +129,8 @@ export class SuperController {
         id,
       });
     } catch (error: any) {
-      res.status(400).json({ error: { message: error.message, status: 400 } });
+      const status = error.status || 400;
+      res.status(status).json({ error: { message: error.message, status } });
     }
   }
 
@@ -154,7 +155,8 @@ export class SuperController {
         redirectUrl: clientAppUrl,
       });
     } catch (error: any) {
-      res.status(400).json({ error: { message: error.message, status: 400 } });
+      const status = error.status || 400;
+      res.status(status).json({ error: { message: error.message, status } });
     }
   }
 

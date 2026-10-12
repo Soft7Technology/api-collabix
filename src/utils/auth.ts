@@ -7,11 +7,30 @@ const RefreshTokenSecret = config.JWT_REFRESH_SECRET;
 const AccessTokenExpiresIn = config.JWT_ACCESS_EXPIRES_IN;
 const RefreshTokenExpiresIn = config.JWT_REFRESH_EXPIRES_IN;
 
+const DURATION_REGEX = /^(\d+)(ms|s|m|h|d|w|y)$/i;
+
+function assertValidDuration(value: string, name: string): void {
+  if (!DURATION_REGEX.test(value)) {
+    throw new Error(
+      `Invalid duration format for ${name}: "${value}". Expected format like "15m", "4h", "30d".`,
+    );
+  }
+}
+
+assertValidDuration(AccessTokenExpiresIn, "JWT_ACCESS_EXPIRES_IN");
+assertValidDuration(RefreshTokenExpiresIn, "JWT_REFRESH_EXPIRES_IN");
+
 /**
- * Hash a password using bcryptjs with 12 rounds.
+ * Standard OWASP-recommended 10 salt rounds for bcryptjs.
+ * Reduces CPU latency (~50ms) to mitigate CPU-exhaustion DoS while ensuring strong security.
+ */
+const BCRYPT_SALT_ROUNDS = 10;
+
+/**
+ * Hash a password using bcryptjs with 10 rounds.
  */
 export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 12);
+  return bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
 }
 
 /**
@@ -29,7 +48,7 @@ export async function comparePassword(
  */
 export function generateAccessToken(payload: object): string {
   return jwt.sign(payload, AccessTokenSecret, {
-    expiresIn: AccessTokenExpiresIn as any,
+    expiresIn: AccessTokenExpiresIn as jwt.SignOptions["expiresIn"],
   });
 }
 
@@ -38,7 +57,7 @@ export function generateAccessToken(payload: object): string {
  */
 export function generateRefreshToken(payload: object): string {
   return jwt.sign(payload, RefreshTokenSecret, {
-    expiresIn: RefreshTokenExpiresIn as any,
+    expiresIn: RefreshTokenExpiresIn as jwt.SignOptions["expiresIn"],
   });
 }
 
@@ -48,7 +67,7 @@ export function generateRefreshToken(payload: object): string {
 export function verifyAccessToken(token: string): any {
   try {
     return jwt.verify(token, AccessTokenSecret);
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -59,7 +78,7 @@ export function verifyAccessToken(token: string): any {
 export function verifyRefreshToken(token: string): any {
   try {
     return jwt.verify(token, RefreshTokenSecret);
-  } catch (error) {
+  } catch {
     return null;
   }
 }

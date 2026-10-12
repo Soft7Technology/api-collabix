@@ -21,6 +21,7 @@ export interface TeamMember {
 declare global {
   namespace Express {
     interface Request {
+      rawBody?: Buffer;
       user?: {
         id: string;
         name?: string;

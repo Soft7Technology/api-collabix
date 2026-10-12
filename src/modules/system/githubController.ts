@@ -1,16 +1,38 @@
 import { Request, Response, NextFunction } from "express";
+import crypto from "crypto";
+import jwt from "jsonwebtoken";
 import { GithubService } from "../../services/githubService.js";
 import { RepositoryService } from "../../services/repositoryService.js";
 import { db } from "../../db/index.js";
 import { config } from "../../config/index.js";
+import { encryptToken, decryptToken } from "../../utils/crypto.js";
 
 export class GithubController {
   /**
    * GET /api/github/auth-url
+   * Initiates GitHub OAuth by generating authorization URL with cryptographically signed state token.
    */
   public static getAuthUrl(req: Request, res: Response, next: NextFunction) {
     try {
-      const state = Math.random().toString(36).substring(2, 15);
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({
+          error: {
+            message: "Authentication is required to connect your GitHub account.",
+            status: 401,
+          },
+        });
+        return;
+      }
+
+      // Encode authenticated userId and nonce in signed JWT state token (15-minute expiry)
+      const statePayload = {
+        userId,
+        nonce: crypto.randomBytes(16).toString("hex"),
+        createdAt: Date.now(),
+      };
+      const state = jwt.sign(statePayload, config.JWT_ACCESS_SECRET, { expiresIn: "15m" });
+
       const url = GithubService.getAuthUrl(state);
       res.json({ url });
     } catch (error) {
@@ -20,32 +42,56 @@ export class GithubController {
 
   /**
    * GET /api/github/callback
+   * Exchanges authorization code for GitHub token, encrypts token with AES-256-GCM, and persists it.
    */
   public static async callback(req: Request, res: Response, next: NextFunction) {
     try {
       const code = req.query.code as string;
+      const state = req.query.state as string | undefined;
+
       if (!code) {
         res.status(400).send("Authorization code is missing.");
         return;
       }
 
-      // If user is not authenticated in Collabix session (e.g. Redirect Callback from GitHub)
-      // we need to make sure we have access to req.user.
-      // Usually, in a single-page-app, the callback happens on the frontend page,
-      // which then makes a GET request to this backend callback endpoint with the code.
-      // That way, the browser's credentials (access_token cookie) are sent, and req.user is populated!
-      const userId = req.user?.id;
+      let userId = req.user?.id;
+
+      // If user session cookie is lost on cross-site redirect callback, recover userId from signed state parameter
+      if (!userId && state) {
+        try {
+          const decoded = jwt.verify(state, config.JWT_ACCESS_SECRET) as { userId?: string };
+          if (decoded && decoded.userId) {
+            userId = decoded.userId;
+          }
+        } catch (stateErr: any) {
+          console.warn("Invalid or expired OAuth state token:", stateErr.message);
+        }
+      }
+
       if (!userId) {
-        res.status(401).send("Unauthorized session context. Please sign in to Collabix first.");
+        res.status(401).send("Unauthorized session context. Please sign in to Collabix and retry connecting GitHub.");
+        return;
+      }
+
+      // Verify that user still exists in database and is active
+      const { rows: userRows } = await db.query(
+        "SELECT id, status FROM users WHERE id = $1 LIMIT 1;",
+        [userId]
+      );
+      if (!userRows[0] || userRows[0].status !== "ACTIVE") {
+        res.status(401).send("User account not found or inactive.");
         return;
       }
 
       const { accessToken, githubUsername } = await GithubService.exchangeCode(code);
 
-      // Save token in DB for the user
+      // Encrypt sensitive GitHub access token with AES-256-GCM before database storage
+      const encryptedToken = encryptToken(accessToken);
+
+      // Save encrypted token in DB for the user
       await db.query(
         "UPDATE users SET github_token = $1, github_username = $2, updated_at = NOW() WHERE id = $3;",
-        [accessToken, githubUsername, userId]
+        [encryptedToken, githubUsername, userId]
       );
 
       // Redirect the user back to the frontend dashboard or integrations page
@@ -79,7 +125,8 @@ export class GithubController {
 
       // Fetch user's GitHub token
       const { rows } = await db.query("SELECT github_token FROM users WHERE id = $1 LIMIT 1;", [userId]);
-      const token = rows[0]?.github_token;
+      const rawStoredToken = rows[0]?.github_token;
+      const token = decryptToken(rawStoredToken);
 
       if (!token) {
         // If GITHUB_CLIENT_ID is not configured, automatically fallback to simulated repos
@@ -130,9 +177,35 @@ export class GithubController {
 
   /**
    * POST /api/github/webhook
+   * Verifies GitHub X-Hub-Signature-256 HMAC header against configured webhook secret.
    */
   public static async handleWebhook(req: Request, res: Response, next: NextFunction) {
     try {
+      const signature = (req.headers["x-hub-signature-256"] as string) || "";
+      const webhookSecret = config.GITHUB_WEBHOOK_SECRET;
+
+      // Verify HMAC SHA-256 webhook signature if secret is configured or signature is provided
+      if (webhookSecret) {
+        if (!signature) {
+          res.status(401).json({ error: "Unauthorized: Missing X-Hub-Signature-256 signature header." });
+          return;
+        }
+
+        const rawPayload = (req as any).rawBody || Buffer.from(JSON.stringify(req.body));
+        const expectedSignature = `sha256=${crypto
+          .createHmac("sha256", webhookSecret)
+          .update(rawPayload)
+          .digest("hex")}`;
+
+        const sigBuf = Buffer.from(signature);
+        const expBuf = Buffer.from(expectedSignature);
+
+        if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+          res.status(401).json({ error: "Unauthorized: Invalid webhook signature verification." });
+          return;
+        }
+      }
+
       const gitHubEvent = req.headers["x-github-event"] as string;
 
       if (gitHubEvent === "ping") {

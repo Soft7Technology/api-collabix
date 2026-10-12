@@ -1,6 +1,7 @@
 import { config } from "../config/index.js";
 import nodemailer from "nodemailer";
 import { queryOne } from "../db/index.js";
+import { decryptToken } from "../utils/crypto.js";
 
 export interface EmailProvider {
   sendInvitationEmail(email: string, invitationUrl: string): Promise<void>;
@@ -64,7 +65,7 @@ async function getOrgIdForEmail(email: string): Promise<string> {
       [email]
     );
     return user?.organization_id || "default";
-  } catch (err) {
+  } catch {
     return "default";
   }
 }
@@ -82,11 +83,12 @@ export async function getDynamicTransporter(orgIdOrEmail: string): Promise<{ tra
     );
     if (row) {
       const secure = row.encryption === "SSL" || Number(row.port) === 465;
+      const decryptedPassword = decryptToken(row.password) || row.password;
       const transporter = nodemailer.createTransport({
         host: row.host,
         port: Number(row.port),
         secure: secure,
-        auth: row.username && row.password ? { user: row.username, pass: row.password } : undefined,
+        auth: row.username && decryptedPassword ? { user: row.username, pass: decryptedPassword } : undefined,
       });
       const from = `"${row.from_name}" <${row.from_email}>`;
       return { transporter, from, fromName: row.from_name };
@@ -114,14 +116,35 @@ export async function getDynamicTransporter(orgIdOrEmail: string): Promise<{ tra
 }
 
 class SmtpEmailProvider implements EmailProvider {
+  /**
+   * Helper: Dispatches email in the background without blocking the caller HTTP request loop.
+   */
+  private dispatchMail(
+    mailOptions: nodemailer.SendMailOptions,
+    emailType: string,
+    recipientEmail: string,
+  ): void {
+    setImmediate(async () => {
+      try {
+        const { transporter, from, fromName } = await getDynamicTransporter(recipientEmail);
+        await transporter.sendMail({
+          from: from,
+          ...mailOptions,
+        });
+        console.log(`✅  ${emailType} email sent via SMTP to ${recipientEmail}`);
+      } catch (error: any) {
+        console.error(`❌  Failed to send ${emailType} email via SMTP to ${recipientEmail}:`, error.message);
+      }
+    });
+  }
+
   async sendInvitationEmail(
     email: string,
     invitationUrl: string,
   ): Promise<void> {
-    try {
-      const { transporter, from, fromName } = await getDynamicTransporter(email);
-      await transporter.sendMail({
-        from: from,
+    const fromName = "Collabix";
+    this.dispatchMail(
+      {
         to: email,
         subject: `Join your team on ${fromName}`,
         html: `
@@ -133,19 +156,16 @@ class SmtpEmailProvider implements EmailProvider {
             <p style="font-size: 12px; color: #666; margin-top: 30px;">If the button doesn't work, copy and paste this URL into your browser:<br>${invitationUrl}</p>
           </div>
         `,
-      });
-      console.log(`✅  Invitation email sent via SMTP to ${email}`);
-    } catch (error) {
-      console.error("❌  Failed to send invitation email via SMTP:", error);
-      throw error;
-    }
+      },
+      "Invitation",
+      email,
+    );
   }
 
   async sendPasswordResetEmail(email: string, resetUrl: string): Promise<void> {
-    try {
-      const { transporter, from, fromName } = await getDynamicTransporter(email);
-      await transporter.sendMail({
-        from: from,
+    const fromName = "Collabix";
+    this.dispatchMail(
+      {
         to: email,
         subject: `Reset your ${fromName} password`,
         html: `
@@ -157,12 +177,10 @@ class SmtpEmailProvider implements EmailProvider {
             <p style="font-size: 12px; color: #666; margin-top: 30px;">If the button doesn't work, copy and paste this URL into your browser:<br>${resetUrl}</p>
           </div>
         `,
-      });
-      console.log(`✅  Password reset email sent via SMTP to ${email}`);
-    } catch (error) {
-      console.error("❌  Failed to send password reset email via SMTP:", error);
-      throw error;
-    }
+      },
+      "Password Reset",
+      email,
+    );
   }
 
   async sendLeaveStatusEmail(
@@ -172,12 +190,11 @@ class SmtpEmailProvider implements EmailProvider {
     endDate: string,
     status: string,
   ): Promise<void> {
-    try {
-      const { transporter, from, fromName } = await getDynamicTransporter(email);
-      const isApproved = status === "APPROVED";
-      const statusLabel = isApproved ? "Approved" : "Rejected";
-      await transporter.sendMail({
-        from: from,
+    const fromName = "Collabix";
+    const isApproved = status === "APPROVED";
+    const statusLabel = isApproved ? "Approved" : "Rejected";
+    this.dispatchMail(
+      {
         to: email,
         subject: `Leave Application ${statusLabel} — ${fromName}`,
         html: `
@@ -202,12 +219,10 @@ class SmtpEmailProvider implements EmailProvider {
             <p><strong>${fromName} Team</strong></p>
           </div>
         `,
-      });
-      console.log(`✅  Leave status email sent via SMTP to ${email}`);
-    } catch (error) {
-      console.error("❌  Failed to send leave status email via SMTP:", error);
-      throw error;
-    }
+      },
+      "Leave Status",
+      email,
+    );
   }
 }
 

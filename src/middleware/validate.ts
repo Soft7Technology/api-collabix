@@ -16,15 +16,20 @@ export const validate = (schema: AnyZodObject) => {
       next();
     } catch (error) {
       if (error instanceof ZodError) {
-        const firstError = error.errors[0];
-        const customMessage = firstError
-          ? `${firstError.message}`
+        const details = error.errors.map((err) => ({
+          field: err.path.join("."),
+          message: err.message,
+        }));
+
+        const customMessage = details.length > 0
+          ? details.map((d) => (d.field ? `${d.field}: ${d.message}` : d.message)).join("; ")
           : "Validation Error";
 
         res.status(400).json({
           error: {
             message: customMessage,
             status: 400,
+            details,
           },
         });
         return;

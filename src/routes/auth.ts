@@ -36,6 +36,7 @@ router.post("/subscription", authenticateUser, AuthController.updateSubscription
 router.post("/subscription/cancel", authenticateUser, AuthController.cancelSubscription);
 router.post("/subscription/create-order", authenticateUser, AuthController.createSubscriptionOrder);
 router.post("/subscription/verify", authenticateUser, AuthController.verifySubscriptionPayment);
+router.post("/subscription/webhook", AuthController.razorpayWebhook);
 
 // Password Reset Flow
 router.post("/forgot-password", authLimiter, AuthController.forgotPassword);

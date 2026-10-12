@@ -2,6 +2,10 @@ import crypto from "crypto";
 import { db } from "../db/index.js";
 import { hashToken } from "./authService.js";
 import { hashPassword } from "../utils/auth.js";
+import { config } from "../config/index.js";
+import { emailService } from "./emailService.js";
+import { RazorpayService } from "./razorpayService.js";
+import { deleteFromR2 } from "./storageService.js";
 
 let maintenanceModeCache: { active: boolean; timestamp: number } | null = null;
 const CACHE_TTL_MS = 5000; // 5 seconds cache to eliminate DB contention
@@ -116,6 +120,7 @@ export class SuperService {
     const org = orgRows[0];
 
     let ownerName = null;
+    let invitationUrl = null;
     if (ownerEmail) {
       const existingUser = await db.query(
         `SELECT id, name, email FROM users WHERE LOWER(email) = $1;`,
@@ -143,22 +148,42 @@ export class SuperService {
             .map((n: string) => n[0])
             .join("")
             .toUpperCase() || "AD";
-        const tempPass = await hashPassword(crypto.randomBytes(8).toString("hex"));
 
         await db.query(
           `INSERT INTO users (id, name, role, email, avatar_color, initials, password_hash, role_id, department_id, status, is_super_admin, organization_id)
-           VALUES ($1, $2, 'Admin', $3, 'var(--terracotta)', $4, $5, $6, $7, 'ACTIVE', FALSE, $8);`,
+           VALUES ($1, $2, 'Admin', $3, 'var(--terracotta)', $4, NULL, $5, $6, 'PENDING_INVITATION', FALSE, $7);`,
           [
             userId,
             name,
             ownerEmail,
             initials,
-            tempPass,
             adminRole.rows[0]?.id,
             engDept.rows[0]?.id,
             org.id,
           ],
         );
+
+        // Generate cryptographically secure invitation token
+        const rawToken = crypto.randomBytes(32).toString("hex");
+        const tokenHash = hashToken(rawToken);
+        const expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + 48); // 48-hour invitation validity
+
+        await db.query(
+          `INSERT INTO user_invitations (user_id, token_hash, expires_at)
+           VALUES ($1, $2, $3);`,
+          [userId, tokenHash, expiresAt],
+        );
+
+        invitationUrl = `${config.FRONTEND_URL}/setup-password?token=${rawToken}`;
+        try {
+          await emailService.sendInvitationEmail(ownerEmail, invitationUrl);
+        } catch (emailErr) {
+          console.error("Failed to send org admin invite email, but user was created:", emailErr);
+          console.log(`\n✉️  [Org Admin Fallback Link] Invitation Link for ${ownerEmail}:`);
+          console.log(`\n${invitationUrl}\n`);
+        }
+
         ownerName = name;
       }
     }
@@ -186,6 +211,7 @@ export class SuperService {
       ...org,
       ownerName,
       ownerEmail,
+      invitationUrl,
       memberCount: ownerEmail ? 1 : 0,
     };
   }
@@ -359,28 +385,90 @@ export class SuperService {
   }
 
   /**
-   * Deletes an organization safely inside a transaction, cleaning up dependencies.
+   * Deletes an organization safely inside a transaction, cleaning up dependencies,
+   * cancelling active Razorpay subscriptions, and deleting remote Cloudflare R2 files.
    */
   static async deleteOrganization(id: string) {
     const orgRes = await db.query(`SELECT name FROM organizations WHERE id = $1;`, [id]);
     const orgName = orgRes.rows[0]?.name || id;
 
-    // Transactional multi-table dependency cleanup
+    // 1. Cancel any active Razorpay subscriptions
+    try {
+      const { rows: subs } = await db.query(
+        `SELECT razorpay_subscription_id FROM subscriptions WHERE organization_id = $1 AND status = 'active';`,
+        [id],
+      );
+      for (const sub of subs) {
+        if (sub.razorpay_subscription_id) {
+          try {
+            await RazorpayService.cancelRazorpaySubscription(sub.razorpay_subscription_id);
+            console.log(`[Org Deletion] Canceled active Razorpay subscription ${sub.razorpay_subscription_id}`);
+          } catch (rErr) {
+            console.error(`[Org Deletion] Failed to cancel Razorpay subscription ${sub.razorpay_subscription_id}:`, rErr);
+          }
+        }
+      }
+    } catch (subErr) {
+      console.error("[Org Deletion] Error checking subscriptions:", subErr);
+    }
+
+    // 2. Prune remote Cloudflare R2 storage files (screenshots, uploads)
+    try {
+      const { rows: screenLogs } = await db.query(
+        `SELECT sl.screenshot_path 
+         FROM screen_logs sl
+         JOIN users u ON sl.user_id = u.id
+         WHERE u.organization_id = $1;`,
+        [id],
+      );
+      for (const log of screenLogs) {
+        if (log.screenshot_path && (log.screenshot_path.startsWith("http://") || log.screenshot_path.startsWith("https://"))) {
+          try {
+            await deleteFromR2(log.screenshot_path);
+          } catch (r2Err) {
+            console.error("[Org Deletion] Failed to delete R2 screenshot:", r2Err);
+          }
+        }
+      }
+    } catch (storageErr) {
+      console.error("[Org Deletion] Error cleaning up cloud storage files:", storageErr);
+    }
+
+    // 3. Transactional multi-table dependency cleanup
     await db.query("BEGIN;");
     try {
-      // 1. Unlink system audit logs
+      // Unlink system audit logs
       await db.query(`UPDATE system_audit_logs SET organization_id = NULL WHERE organization_id = $1;`, [id]);
 
-      // 2. Remove support ticket replies and tickets
+      // Remove support ticket replies and tickets
+      await db.query(
+        `DELETE FROM support_ticket_replies WHERE ticket_id IN (SELECT id FROM support_tickets WHERE organization_id = $1);`,
+        [id],
+      );
       await db.query(`DELETE FROM support_tickets WHERE organization_id = $1;`, [id]);
 
-      // 3. Remove billing invoices
+      // Remove billing invoices and subscriptions
       await db.query(`DELETE FROM invoices WHERE organization_id = $1;`, [id]);
+      await db.query(`DELETE FROM subscriptions WHERE organization_id = $1;`, [id]);
 
-      // 4. Delete regular tenant users (preserving any platform superadmins)
+      // Remove tokens and screen logs for tenant users
+      await db.query(
+        `DELETE FROM refresh_tokens WHERE user_id IN (SELECT id FROM users WHERE organization_id = $1 AND is_super_admin = FALSE);`,
+        [id],
+      );
+      await db.query(
+        `DELETE FROM user_invitations WHERE user_id IN (SELECT id FROM users WHERE organization_id = $1 AND is_super_admin = FALSE);`,
+        [id],
+      );
+      await db.query(
+        `DELETE FROM screen_logs WHERE user_id IN (SELECT id FROM users WHERE organization_id = $1);`,
+        [id],
+      );
+
+      // Delete regular tenant users (preserving any platform superadmins)
       await db.query(`DELETE FROM users WHERE organization_id = $1 AND is_super_admin = FALSE;`, [id]);
 
-      // 5. Delete organization
+      // Delete organization
       const { rowCount } = await db.query(`DELETE FROM organizations WHERE id = $1;`, [id]);
 
       await db.query("COMMIT;");
@@ -412,21 +500,48 @@ export class SuperService {
       [id],
     );
     if (!orgRes.rows[0]) {
-      throw new Error(`Organization with ID '${id}' not found.`);
+      const err: any = new Error(`Organization with ID '${id}' not found.`);
+      err.status = 404;
+      throw err;
     }
 
+    const org = orgRes.rows[0];
+    if (org.subscriptionStatus === "revoked" || org.isApproved === false) {
+      const err: any = new Error(
+        `Cannot impersonate workspace '${org.name}': Workspace access is currently suspended or revoked.`,
+      );
+      err.status = 403;
+      throw err;
+    }
+
+    // Select the highest-ranking active user
     const { rows } = await db.query(
-      `SELECT u.id, u.email, u.name, r.name AS role_name, r.rank AS role_rank
+      `SELECT u.id, u.email, u.name, u.status, r.name AS role_name, r.rank AS role_rank
        FROM users u
        JOIN roles r ON u.role_id = r.id
-       WHERE u.organization_id = $1
+       WHERE u.organization_id = $1 AND u.status = 'ACTIVE'
        ORDER BY r.rank ASC, u.created_at ASC
        LIMIT 1;`,
       [id],
     );
 
     if (!rows[0]) {
-      throw new Error(`No active user found in organization '${orgRes.rows[0].name}' to impersonate.`);
+      const { rows: allUsers } = await db.query(
+        `SELECT id, status FROM users WHERE organization_id = $1;`,
+        [id],
+      );
+      if (allUsers.length === 0) {
+        const err: any = new Error(
+          `Cannot impersonate workspace '${org.name}': No members have been added to this organization yet.`,
+        );
+        err.status = 400;
+        throw err;
+      }
+      const err: any = new Error(
+        `Cannot impersonate workspace '${org.name}': All ${allUsers.length} member(s) are currently inactive, suspended, or pending invitation. An active user account is required for impersonation.`,
+      );
+      err.status = 400;
+      throw err;
     }
 
     const targetUser = rows[0];
@@ -442,14 +557,14 @@ export class SuperService {
 
     await SuperService.logAudit(
       "sec",
-      `Super Admin impersonated workspace "${orgRes.rows[0].name}".`,
+      `Super Admin impersonated workspace "${org.name}" as ${targetUser.name} (${targetUser.email}).`,
       id,
       targetUser.id,
     );
 
     return {
       user: targetUser,
-      organization: orgRes.rows[0],
+      organization: org,
       rawRefreshToken,
     };
   }

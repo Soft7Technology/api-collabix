@@ -20,7 +20,16 @@ export async function authenticateUser(
       token = authHeader.split(" ")[1];
     }
 
+    const isPublicCallbackOrWebhook =
+      req.path === "/github/callback" ||
+      req.path === "/github/webhook" ||
+      req.originalUrl.includes("/github/callback") ||
+      req.originalUrl.includes("/github/webhook");
+
     if (!token) {
+      if (isPublicCallbackOrWebhook) {
+        return next();
+      }
       res.status(401).json({
         error: {
           message: "Authentication token is missing. Please log in.",
@@ -32,6 +41,9 @@ export async function authenticateUser(
 
     const decoded = verifyAccessToken(token);
     if (!decoded || !decoded.userId) {
+      if (isPublicCallbackOrWebhook) {
+        return next();
+      }
       res.status(401).json({
         error: {
           message: "Invalid or expired access token.",
@@ -44,7 +56,7 @@ export async function authenticateUser(
     // Query DB to ensure user exists and is active, joining with roles and organizations
     const { rows } = await db.query(
       `SELECT u.id, u.name, u.email, u.role_id, u.status, u.department_id, u.is_super_admin, u.organization_id, u.can_create_tasks,
-              d.name as department_name,
+              TRIM(d.name) as department_name,
               r.name as role_name, r.rank as role_rank,
               o.name as org_name, COALESCE(o.plan, 'Pro') as org_plan, o.subscription_status, o.trial_ends_at, o.is_approved as org_is_approved, o.timezone, o.created_at as org_created_at
        FROM users u
@@ -118,23 +130,44 @@ export async function authenticateUser(
 
 /**
  * Guard middleware: Restricts Code & Repository section for Marketing and Sales departments.
+ * Also prevents unauthorized access for legacy users with null or unassigned departments.
  */
 export function requireCodeAccess(req: Request, res: Response, next: NextFunction) {
   if (
     req.user?.is_super_admin ||
     req.user?.role_name === "Admin" ||
     req.user?.role_name === "Super Admin" ||
-    req.user?.role_rank === 1 ||
-    req.user?.permissions?.includes("admin:manage")
+    (req.user?.role_rank !== undefined && req.user.role_rank <= 1) ||
+    req.user?.permissions?.includes("admin:manage") ||
+    req.user?.permissions?.includes("*")
   ) {
     return next();
   }
 
-  const dept = (req.user?.department_name || "").trim().toLowerCase();
-  if (dept === "marketing" || dept === "sales") {
+  const rawDept = req.user?.department_name;
+
+  // Block users without an assigned department from accessing repositories
+  if (!rawDept || !rawDept.trim()) {
     res.status(403).json({
       error: {
-        message: `The Code & Repository section is restricted for members of the ${req.user?.department_name} department.`,
+        message: "Access to Code & Repository is restricted. A verified department assignment is required.",
+        status: 403,
+      },
+    });
+    return;
+  }
+
+  // Normalize Unicode and whitespace characters
+  const normalizedDept = rawDept
+    .replace(/[\s\uFEFF\xA0]+/g, " ")
+    .trim()
+    .toLowerCase();
+
+  // Case-insensitive regex matching for marketing and sales department variations
+  if (/\b(marketing|sales)\b/i.test(normalizedDept) || /marketing|sales/i.test(normalizedDept)) {
+    res.status(403).json({
+      error: {
+        message: `The Code & Repository section is restricted for members of the ${rawDept.trim()} department.`,
         status: 403,
       },
     });

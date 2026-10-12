@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 function getR2Config() {
@@ -46,7 +47,8 @@ export async function uploadToR2(
   }
 
   const cleanFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
-  const fileKey = `${folder}/${Date.now()}-${cleanFileName}`;
+  const uniqueSuffix = crypto.randomBytes(8).toString("hex");
+  const fileKey = `${folder}/${Date.now()}-${uniqueSuffix}-${cleanFileName}`;
 
   await client.send(
     new PutObjectCommand({
@@ -77,21 +79,27 @@ export const r2Client = new Proxy({} as S3Client, {
 /**
  * Deletes an object from Cloudflare R2 storage by its public URL.
  * @param fileUrl The stored public URL of the file
+ * @returns Promise<boolean> indicating whether deletion succeeded
  */
-export async function deleteFromR2(fileUrl: string): Promise<void> {
-  if (!fileUrl.startsWith("http://") && !fileUrl.startsWith("https://")) {
-    return;
+export async function deleteFromR2(fileUrl: string): Promise<boolean> {
+  if (!fileUrl || (!fileUrl.startsWith("http://") && !fileUrl.startsWith("https://"))) {
+    return false;
   }
 
   const client = getR2Client();
   const { bucketName } = getR2Config();
   if (!client) {
-    return;
+    throw new Error("Cloudflare R2 is not configured");
   }
 
   try {
     const urlObj = new URL(fileUrl);
-    const fileKey = urlObj.pathname.replace(/^\//, "");
+    let fileKey = urlObj.pathname.replace(/^\/+/, "");
+
+    // If URL pathname includes the bucket name prefix, strip it
+    if (fileKey.startsWith(`${bucketName}/`)) {
+      fileKey = fileKey.slice(bucketName.length + 1);
+    }
 
     await client.send(
       new DeleteObjectCommand({
@@ -100,7 +108,9 @@ export async function deleteFromR2(fileUrl: string): Promise<void> {
       })
     );
     console.log(`[Cloudflare R2] Successfully deleted object: ${fileKey}`);
+    return true;
   } catch (err) {
-    console.error("[Cloudflare R2] Failed to delete object from R2:", err);
+    console.error(`[Cloudflare R2] Failed to delete object '${fileUrl}' from R2:`, err);
+    throw err;
   }
 }

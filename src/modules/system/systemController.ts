@@ -2,6 +2,8 @@ import { Request, Response } from "express";
 import nodemailer from "nodemailer";
 import { query, queryOne } from "../../db/index.js";
 import { config } from "../../config/index.js";
+import { encryptToken, decryptToken } from "../../utils/crypto.js";
+
 export interface SmtpSettings {
   provider: string;
   encryption: string;
@@ -39,11 +41,11 @@ let inMemorySmtpSettings: SmtpSettings = {
 
 export class SystemController {
   static async getSmtpSettings(req: Request, res: Response) {
-    const orgId = (req.user as any)?.organization_id || 'default';
+    const orgId = (req.user as any)?.organization_id || "default";
     try {
       const row = await queryOne<any>(
         "SELECT * FROM system_smtp_settings WHERE id = $1",
-        [orgId]
+        [orgId],
       );
       if (row) {
         return res.json({
@@ -52,21 +54,24 @@ export class SystemController {
           host: row.host,
           port: Number(row.port),
           username: row.username,
-          password: row.password,
+          password: row.password ? "••••••••" : "",
           fromName: row.from_name,
           fromEmail: row.from_email,
           replyTo: row.reply_to || "",
           testRecipient: row.test_recipient || "",
         });
       }
-    } catch (err) {
+    } catch {
       // Fall back to in-memory store if database table doesn't exist yet
     }
-    return res.json(inMemorySmtpSettings);
+    return res.json({
+      ...inMemorySmtpSettings,
+      password: inMemorySmtpSettings.password ? "••••••••" : "",
+    });
   }
 
   static async updateSmtpSettings(req: Request, res: Response) {
-    const orgId = (req.user as any)?.organization_id || 'default';
+    const orgId = (req.user as any)?.organization_id || "default";
     const {
       provider,
       encryption,
@@ -80,13 +85,29 @@ export class SystemController {
       testRecipient,
     } = req.body;
 
+    let encryptedPassword: string;
+    if (password && password !== "••••••••") {
+      encryptedPassword = encryptToken(password) || password;
+    } else {
+      // Keep existing password
+      try {
+        const existing = await queryOne<any>(
+          "SELECT password FROM system_smtp_settings WHERE id = $1",
+          [orgId],
+        );
+        encryptedPassword = existing?.password || inMemorySmtpSettings.password;
+      } catch {
+        encryptedPassword = inMemorySmtpSettings.password;
+      }
+    }
+
     inMemorySmtpSettings = {
       provider,
       encryption,
       host,
       port: Number(port),
       username,
-      password,
+      password: encryptedPassword,
       fromName,
       fromEmail,
       replyTo: replyTo || "",
@@ -133,7 +154,7 @@ export class SystemController {
           host,
           Number(port),
           username,
-          password,
+          encryptedPassword,
           fromName,
           fromEmail,
           replyTo || "",
@@ -146,7 +167,10 @@ export class SystemController {
 
     return res.json({
       message: "SMTP configuration updated successfully",
-      settings: inMemorySmtpSettings,
+      settings: {
+        ...inMemorySmtpSettings,
+        password: "••••••••",
+      },
     });
   }
 
@@ -162,7 +186,46 @@ export class SystemController {
       fromEmail,
     } = req.body;
 
-    const recipient = testRecipient || "admin@platform.io";
+    const userEmail = req.user?.email;
+    const orgId = req.user?.organization_id;
+    const isSuperAdmin = req.user?.is_super_admin;
+
+    // Resolve target recipient with open relay protection
+    let targetRecipient = testRecipient?.trim() || userEmail || fromEmail;
+
+    // Prevent open spam relay abuse by restricting non-superadmins to organization addresses or their own email
+    if (!isSuperAdmin) {
+      const isSenderOrSelf = targetRecipient.toLowerCase() === userEmail?.toLowerCase() || targetRecipient.toLowerCase() === fromEmail?.toLowerCase();
+      if (!isSenderOrSelf && orgId) {
+        const memberRes = await queryOne<any>(
+          "SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND organization_id = $2 LIMIT 1;",
+          [targetRecipient, orgId],
+        );
+        if (!memberRes) {
+          targetRecipient = userEmail || fromEmail;
+        }
+      } else if (!isSenderOrSelf) {
+        targetRecipient = userEmail || fromEmail;
+      }
+    }
+
+    // Resolve password if masked or omitted
+    let effectivePassword = password;
+    if (!effectivePassword || effectivePassword === "••••••••") {
+      try {
+        const row = await queryOne<any>(
+          "SELECT password FROM system_smtp_settings WHERE id = $1",
+          [orgId || "default"],
+        );
+        if (row?.password) {
+          effectivePassword = decryptToken(row.password) || row.password;
+        } else {
+          effectivePassword = inMemorySmtpSettings.password;
+        }
+      } catch {
+        effectivePassword = inMemorySmtpSettings.password;
+      }
+    }
 
     try {
       const secure = encryption === "SSL" || Number(port) === 465;
@@ -170,16 +233,16 @@ export class SystemController {
         host: host,
         port: Number(port),
         secure: secure,
-        auth: username && password ? { user: username, pass: password } : undefined,
+        auth: username && effectivePassword ? { user: username, pass: effectivePassword } : undefined,
       });
 
-      // Verify connection
+      // Verify socket connection
       await transporter.verify();
 
       // Send the test email
       await transporter.sendMail({
         from: `"${fromName || "Platform Alerts"}" <${fromEmail || "no-reply@platform.io"}>`,
-        to: recipient,
+        to: targetRecipient,
         subject: "SMTP Connection Test — SOFT7",
         html: `
           <div style="font-family: sans-serif; padding: 20px; line-height: 1.6; color: #111;">
@@ -198,11 +261,11 @@ export class SystemController {
 
       return res.json({
         success: true,
-        message: `Test email sent successfully to ${recipient}! SMTP server connection verified.`,
+        message: `Test email sent successfully to ${targetRecipient}! SMTP server connection verified.`,
         timestamp: new Date().toISOString(),
       });
     } catch (err: any) {
-      console.error("❌ SMTP connection test failed:", err);
+      console.error("❌ SMTP connection test failed:", err.message);
       return res.status(400).json({
         error: {
           message: `SMTP connection test failed: ${err.message || "Unknown error"}`,
@@ -213,18 +276,21 @@ export class SystemController {
   }
 
   static async deleteSmtpSettings(req: Request, res: Response) {
-    const orgId = (req.user as any)?.organization_id || 'default';
+    const orgId = (req.user as any)?.organization_id || "default";
     try {
       await query(
         "DELETE FROM system_smtp_settings WHERE id = $1",
-        [orgId]
+        [orgId],
       );
       return res.json({
         message: "SMTP configuration reset to system defaults successfully",
-        settings: inMemorySmtpSettings,
+        settings: {
+          ...inMemorySmtpSettings,
+          password: inMemorySmtpSettings.password ? "••••••••" : "",
+        },
       });
-    } catch (err) {
-      console.error("❌ Failed to delete SMTP settings:", err);
+    } catch (err: any) {
+      console.error("❌ Failed to delete SMTP settings:", err.message);
       return res.status(500).json({
         error: {
           message: "Failed to reset SMTP settings.",
@@ -235,20 +301,20 @@ export class SystemController {
   }
 
   static async getWhatsAppSettings(req: Request, res: Response) {
-    const orgId = (req.user as any)?.organization_id || 'default';
+    const orgId = (req.user as any)?.organization_id || "default";
     try {
       const row = await queryOne<any>(
         "SELECT * FROM system_whatsapp_settings WHERE id = $1",
-        [orgId]
+        [orgId],
       );
       if (row) {
         return res.json({
           enabled: !!row.enabled,
           phoneNumber: row.phone_number || "",
-          apiKey: row.api_key || "",
+          apiKey: row.api_key ? "••••••••" : "",
         });
       }
-    } catch (err) {
+    } catch {
       // Table doesn't exist or query failed, return defaults
     }
     return res.json({
@@ -259,7 +325,7 @@ export class SystemController {
   }
 
   static async updateWhatsAppSettings(req: Request, res: Response) {
-    const orgId = (req.user as any)?.organization_id || 'default';
+    const orgId = (req.user as any)?.organization_id || "default";
     const { enabled, phoneNumber, apiKey } = req.body;
 
     try {
@@ -273,6 +339,17 @@ export class SystemController {
         );`,
       );
 
+      let encryptedApiKey = apiKey;
+      if (apiKey && apiKey !== "••••••••") {
+        encryptedApiKey = encryptToken(apiKey) || apiKey;
+      } else {
+        const existing = await queryOne<any>(
+          "SELECT api_key FROM system_whatsapp_settings WHERE id = $1",
+          [orgId],
+        );
+        encryptedApiKey = existing?.api_key || "";
+      }
+
       await query(
         `INSERT INTO system_whatsapp_settings (id, enabled, phone_number, api_key, updated_at)
          VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
@@ -281,7 +358,7 @@ export class SystemController {
           phone_number = EXCLUDED.phone_number,
           api_key = EXCLUDED.api_key,
           updated_at = CURRENT_TIMESTAMP`,
-        [orgId, !!enabled, phoneNumber || "", apiKey || ""],
+        [orgId, !!enabled, phoneNumber || "", encryptedApiKey],
       );
 
       return res.json({
@@ -289,11 +366,11 @@ export class SystemController {
         settings: {
           enabled: !!enabled,
           phoneNumber: phoneNumber || "",
-          apiKey: apiKey || "",
+          apiKey: "••••••••",
         },
       });
     } catch (err: any) {
-      console.error("❌ Failed to update WhatsApp settings:", err);
+      console.error("❌ Failed to update WhatsApp settings:", err.message);
       return res.status(500).json({
         error: {
           message: `Failed to save WhatsApp settings: ${err.message || "Unknown error"}`,
@@ -304,11 +381,11 @@ export class SystemController {
   }
 
   static async deleteWhatsAppSettings(req: Request, res: Response) {
-    const orgId = (req.user as any)?.organization_id || 'default';
+    const orgId = (req.user as any)?.organization_id || "default";
     try {
       await query(
         "DELETE FROM system_whatsapp_settings WHERE id = $1",
-        [orgId]
+        [orgId],
       );
       return res.json({
         message: "WhatsApp configuration reset to defaults successfully",
@@ -319,7 +396,7 @@ export class SystemController {
         },
       });
     } catch (err: any) {
-      console.error("❌ Failed to delete WhatsApp settings:", err);
+      console.error("❌ Failed to delete WhatsApp settings:", err.message);
       return res.status(500).json({
         error: {
           message: "Failed to reset WhatsApp settings.",

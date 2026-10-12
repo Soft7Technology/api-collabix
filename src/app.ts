@@ -10,7 +10,6 @@ import { router as authRouter } from "./routes/auth.js";
 import { authenticateUser } from "./middleware/authenticate.js";
 import { validateCSRF } from "./middleware/csrf.js";
 import { errorHandler } from "./middleware/errorHandler.js";
-import { AuthController } from "../src/modules/auth/authController.js";
 import { db } from "./db/index.js";
 import { SuperService } from "./services/superService.js";
 
@@ -20,12 +19,25 @@ const app = express();
 app.use(helmet());
 app.use(cookieParser());
 
-app.post("/auth/subscription/webhook",
-  express.raw({type: "application/json"}),
-  AuthController.razorpayWebhook
-)
+// Support JSON & URL-encoded bodies while capturing the unparsed raw buffer for signature verification (webhooks)
+app.use(
+  express.json({
+    limit: "10mb",
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+);
 
-app.use(express.json());
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: "10mb",
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+);
 
 // Dev logs (morgan)
 if (process.env.NODE_ENV === "development") {
@@ -44,11 +56,14 @@ app.use(
   express.static(path.resolve(process.cwd(), "uploads")),
 );
 
-const allowedOrigins = config.FRONTEND_URLS
-  ? config.FRONTEND_URLS.split(",").map((o) => o.trim())
-  : [config.FRONTEND_URL];
-
-const isDev = process.env.NODE_ENV !== "production";
+const allowedOrigins = new Set(
+  (config.FRONTEND_URLS ? config.FRONTEND_URLS.split(",") : [config.FRONTEND_URL])
+    .map((o) => o.trim().replace(/\/$/, ""))
+    .filter(Boolean),
+);
+if (config.FRONTEND_URL) {
+  allowedOrigins.add(config.FRONTEND_URL.trim().replace(/\/$/, ""));
+}
 
 app.use(
   cors({
@@ -56,19 +71,12 @@ app.use(
       // Allow requests with no origin (like mobile apps, curl, or SSR fetch requests)
       if (!origin) return callback(null, true);
 
-      // In development mode, allow any localhost or 127.0.0.1 port (e.g. 3000, 8001, 5173, etc.)
-      if (isDev && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      const normalizedOrigin = origin.trim().replace(/\/$/, "");
+      if (allowedOrigins.has(normalizedOrigin) || allowedOrigins.has("*")) {
         return callback(null, true);
       }
 
-      if (
-        allowedOrigins.indexOf(origin) !== -1 ||
-        allowedOrigins.includes("*")
-      ) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
+      callback(new Error(`Origin ${origin} is not allowed by CORS`));
     },
     credentials: true,
   }),

@@ -1,12 +1,25 @@
 import { Request, Response, NextFunction } from "express";
-import { DiscussionService } from "../../services/discussionService.js";
+import { DiscussionService, UserContext } from "../../services/discussionService.js";
 
 export class DiscussionController {
+  private static extractUserCtx(req: Request): UserContext | undefined {
+    if (!req.user) return undefined;
+    return {
+      id: req.user.id,
+      roleName: req.user.role_name || "Teammates",
+      roleRank: req.user.role_rank ?? 4,
+      departmentId: req.user.department_id || null,
+      organizationId: req.user.organization_id || null,
+      isSuperAdmin: Boolean(req.user.is_super_admin),
+    };
+  }
+
   static async getByProject(req: Request, res: Response, next: NextFunction) {
     try {
       const { projectId } = req.params;
+      const userCtx = DiscussionController.extractUserCtx(req);
       const orgId = req.user?.organization_id || null;
-      const discussions = await DiscussionService.getByProject(projectId, orgId);
+      const discussions = await DiscussionService.getByProject(projectId, orgId, userCtx);
       res.json(discussions);
     } catch (error) {
       next(error);
@@ -27,15 +40,21 @@ export class DiscussionController {
         return;
       }
 
-      const item = await DiscussionService.create(req.user.id, req.user.organization_id || null, {
-        projectId,
-        type,
-        priority,
-        title,
-        description,
-        assignedTo,
-        attachments,
-      });
+      const userCtx = DiscussionController.extractUserCtx(req);
+      const item = await DiscussionService.create(
+        req.user.id,
+        req.user.organization_id || null,
+        {
+          projectId,
+          type,
+          priority,
+          title,
+          description,
+          assignedTo,
+          attachments,
+        },
+        userCtx,
+      );
 
       res.status(201).json(item);
     } catch (error) {
@@ -46,7 +65,9 @@ export class DiscussionController {
   static async getReplies(req: Request, res: Response, next: NextFunction) {
     try {
       const { discussionId } = req.params;
-      const replies = await DiscussionService.getReplies(discussionId);
+      const userCtx = DiscussionController.extractUserCtx(req);
+      const orgId = req.user?.organization_id || null;
+      const replies = await DiscussionService.getReplies(discussionId, orgId, userCtx);
       res.json(replies);
     } catch (error) {
       next(error);
@@ -67,11 +88,17 @@ export class DiscussionController {
         return;
       }
 
-      const reply = await DiscussionService.addReply(req.user.id, {
-        discussionId,
-        content: content.trim(),
-        attachments,
-      });
+      const userCtx = DiscussionController.extractUserCtx(req);
+      const reply = await DiscussionService.addReply(
+        req.user.id,
+        {
+          discussionId,
+          content: content.trim(),
+          attachments,
+        },
+        req.user.organization_id || null,
+        userCtx,
+      );
 
       res.status(201).json(reply);
     } catch (error) {
@@ -86,7 +113,13 @@ export class DiscussionController {
         return;
       }
       const { id } = req.params;
-      const result = await DiscussionService.toggleResolve(id, req.user.id);
+      const userCtx = DiscussionController.extractUserCtx(req);
+      const result = await DiscussionService.toggleResolve(
+        id,
+        req.user.id,
+        req.user.organization_id || null,
+        userCtx,
+      );
       if (!result) {
         res.status(404).json({ error: { message: "Discussion not found", status: 404 } });
         return;
@@ -104,7 +137,14 @@ export class DiscussionController {
         return;
       }
       const { id } = req.params;
-      const deleted = await DiscussionService.delete(id, req.user.id, req.user.is_super_admin || false);
+      const userCtx = DiscussionController.extractUserCtx(req);
+      const deleted = await DiscussionService.delete(
+        id,
+        req.user.id,
+        req.user.is_super_admin || false,
+        req.user.organization_id || null,
+        userCtx,
+      );
       if (!deleted) {
         res.status(404).json({ error: { message: "Discussion not found or forbidden", status: 404 } });
         return;

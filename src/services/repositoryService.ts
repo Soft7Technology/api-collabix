@@ -1,6 +1,7 @@
 import { db, pool } from "../db/index.js";
 import { DashboardService } from "./dashboardService.js";
 import { GithubService } from "./githubService.js";
+import { decryptToken } from "../utils/crypto.js";
 
 export interface RepositoryInput {
   name: string;
@@ -180,7 +181,7 @@ export class RepositoryService {
       // Fetch user's name & token
       const { rows: userRows } = await client.query("SELECT name, github_token FROM users WHERE id = $1 LIMIT 1;", [userId]);
       const userName = userRows[0]?.name || "System";
-      const githubToken = userRows[0]?.github_token || null;
+      const githubToken = decryptToken(userRows[0]?.github_token) || null;
 
       // 2. Sync branches from GitHub if connected
       let syncedBranches = false;
@@ -295,9 +296,8 @@ export class RepositoryService {
     let latestCommit: any = null;
 
     if (repo.githubOwner && repo.githubRepoName && userId) {
-      let token: string | null = null;
       const { rows: userRows } = await db.query("SELECT github_token FROM users WHERE id = $1 LIMIT 1;", [userId]);
-      token = userRows[0]?.github_token || null;
+      const token = decryptToken(userRows[0]?.github_token) || null;
       const targetBranch = branch || repo.defaultBranch || "main";
       const liveCommits = await GithubService.getRepoCommits(token, repo.githubOwner, repo.githubRepoName, targetBranch);
       if (liveCommits.length > 0) {
@@ -370,9 +370,8 @@ export class RepositoryService {
 
     // If connected to GitHub, fetch live commits directly
     if (repo?.github_owner && repo?.github_repo_name && userId) {
-      let token: string | null = null;
       const { rows: userRows } = await db.query("SELECT github_token FROM users WHERE id = $1 LIMIT 1;", [userId]);
-      token = userRows[0]?.github_token || null;
+      const token = decryptToken(userRows[0]?.github_token) || null;
       const targetBranch = branch || repo.default_branch || "main";
       const liveCommits = await GithubService.getRepoCommits(token, repo.github_owner, repo.github_repo_name, targetBranch);
       if (liveCommits.length > 0) {
@@ -420,7 +419,7 @@ export class RepositoryService {
     let token: string | null = null;
     if (userId) {
       const { rows: userRows } = await db.query("SELECT github_token FROM users WHERE id = $1 LIMIT 1;", [userId]);
-      token = userRows[0]?.github_token || null;
+      token = decryptToken(userRows[0]?.github_token) || null;
     }
 
     // 1. Sync Branches

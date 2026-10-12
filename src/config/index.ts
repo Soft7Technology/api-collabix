@@ -24,8 +24,20 @@ const envSchema = z
       .string()
       .min(32)
       .default("dev_refresh_secret_key_at_least_32_chars_long_12345"),
-    JWT_ACCESS_EXPIRES_IN: z.string().default("4h"),
-    JWT_REFRESH_EXPIRES_IN: z.string().default("30d"),
+    JWT_ACCESS_EXPIRES_IN: z
+      .string()
+      .regex(
+        /^(\d+)(ms|s|m|h|d|w|y)$/i,
+        "Invalid duration format. Expected format like '15m', '4h', '30d'",
+      )
+      .default("4h"),
+    JWT_REFRESH_EXPIRES_IN: z
+      .string()
+      .regex(
+        /^(\d+)(ms|s|m|h|d|w|y)$/i,
+        "Invalid duration format. Expected format like '15m', '4h', '30d'",
+      )
+      .default("30d"),
     // Customer URL is used in invitation/reset links. FRONTEND_URLS is the
     // complete CORS allow-list for the customer and administration apps.
     FRONTEND_URL: z.string().url().default("http://localhost:8001"),
@@ -54,10 +66,14 @@ const envSchema = z
     SMTP_LEAVE_FROM: z
       .string()
       .default("SOFT7 HR <Soft7.in@gmail.com>"),
-    COOKIE_DOMAIN: z.string().optional(),
+    COOKIE_DOMAIN: z
+      .string()
+      .optional()
+      .transform((val) => (val && val.trim() ? val.trim() : undefined)),
     GITHUB_CLIENT_ID: z.string().optional().default(""),
     GITHUB_CLIENT_SECRET: z.string().optional().default(""),
     GITHUB_REDIRECT_URI: z.string().optional().default(""),
+    GITHUB_WEBHOOK_SECRET: z.string().optional().default(""),
   })
   .superRefine((env, context) => {
     if (env.NODE_ENV !== "production") return;
@@ -73,6 +89,29 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ["JWT_REFRESH_SECRET"],
         message: "Production refresh secret must be explicitly configured",
+      });
+    }
+    if (
+      !process.env.FRONTEND_URL ||
+      env.FRONTEND_URL === "http://localhost:8001" ||
+      /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(env.FRONTEND_URL)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["FRONTEND_URL"],
+        message:
+          "Production FRONTEND_URL must be explicitly configured with a non-localhost URL to prevent invalid email links",
+      });
+    }
+    if (
+      !process.env.FRONTEND_URLS &&
+      env.FRONTEND_URLS === "http://localhost:8001,http://localhost:8002"
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["FRONTEND_URLS"],
+        message:
+          "Production FRONTEND_URLS must be explicitly configured for CORS allow-listing",
       });
     }
   });

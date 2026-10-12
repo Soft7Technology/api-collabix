@@ -1,5 +1,6 @@
 import { db, pool } from "../db/index.js";
 import { ProjectService } from "./projectService.js";
+import { deleteFromR2 } from "./storageService.js";
 
 function getTodayIST(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -10,13 +11,15 @@ export interface TaskInput {
   description?: string;
   status: string;
   priority: string;
-  assigneeId: string;
+  assigneeId?: string;
+  assigneeIds?: string[];
   projectId: string;
   dueDate?: string;
   startDate?: string;
   isStartDateAuto?: boolean;
   sprintId?: string;
   attachments?: any[];
+  parentTaskId?: string | null;
 }
 
 export class TaskService {
@@ -31,8 +34,10 @@ export class TaskService {
       isSuperAdmin?: boolean;
     },
   ) {
-    if (userCtx && !userCtx.organizationId && !userCtx.isSuperAdmin) {
-      return [];
+    if (!userCtx?.organizationId) {
+      const error: any = new Error("Organization ID is required to retrieve tasks.");
+      error.status = 400;
+      throw error;
     }
 
     let queryStr = "SELECT * FROM tasks";
@@ -41,7 +46,7 @@ export class TaskService {
 
     const conditions: string[] = [];
 
-    if (userCtx && userCtx.organizationId) {
+    if (userCtx.organizationId) {
       conditions.push(`organization_id = $${index++}`);
       params.push(userCtx.organizationId);
     }
@@ -57,7 +62,7 @@ export class TaskService {
       if (visibleProjectIds.length === 0) {
         return []; // No visible projects -> no tasks
       }
-      conditions.push(`project_id = ANY($${index++})`);
+      conditions.push(`project_id = ANY($${index})`);
       params.push(visibleProjectIds);
     }
 
@@ -78,12 +83,20 @@ export class TaskService {
         created_at,
         updated_at,
         sprint_id,
+        attachments,
+        parent_task_id,
         ...rest
       } = r;
 
+      const parsedAssigneeIds = (assignee_id || "")
+        .split(",")
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+
       return {
         ...rest,
-        assigneeId: assignee_id,
+        assigneeId: assignee_id || "",
+        assigneeIds: parsedAssigneeIds,
         projectId: project_id,
         dueDate: due_date || "",
         startDate: start_date || "",
@@ -91,6 +104,8 @@ export class TaskService {
         createdAt: created_at,
         updatedAt: updated_at,
         sprintId: sprint_id,
+        attachments: attachments || [],
+        parentTaskId: parent_task_id || null,
       };
     });
   }
@@ -106,25 +121,28 @@ export class TaskService {
       isSuperAdmin?: boolean;
     },
   ) {
-    const taskResult = await db.query("SELECT * FROM tasks WHERE id = $1;", [
-      id,
-    ]);
+    if (!userCtx?.organizationId) {
+      const error: any = new Error("Organization ID is required to retrieve tasks.");
+      error.status = 400;
+      throw error;
+    }
+
+    const taskResult = await db.query(
+      "SELECT * FROM tasks WHERE id = $1 AND organization_id = $2;",
+      [id, userCtx.organizationId],
+    );
     const r = taskResult.rows[0];
     if (!r) return null;
 
-    if (userCtx) {
-      if (userCtx.organizationId) {
-        if (r.organization_id !== userCtx.organizationId) {
-          return null;
-        }
-      } else if (!userCtx.isSuperAdmin) {
-        return null;
-      }
-    }
+    const parsedAssigneeIds = (r.assignee_id || "")
+      .split(",")
+      .map((s: string) => s.trim())
+      .filter(Boolean);
 
     const task = {
       ...r,
-      assigneeId: r.assignee_id,
+      assigneeId: r.assignee_id || "",
+      assigneeIds: parsedAssigneeIds,
       projectId: r.project_id,
       dueDate: r.due_date || "",
       startDate: r.start_date || "",
@@ -132,6 +150,8 @@ export class TaskService {
       createdAt: r.created_at,
       updatedAt: r.updated_at,
       sprintId: r.sprint_id,
+      attachments: r.attachments || [],
+      parentTaskId: r.parent_task_id || null,
     };
 
     if (userCtx && userCtx.roleRank > 2) {
@@ -144,13 +164,52 @@ export class TaskService {
   }
 
   static async create(task: TaskInput, organizationId?: string | null) {
+    if (!organizationId) {
+      const error: any = new Error("Organization ID is required to create a task.");
+      error.status = 400;
+      throw error;
+    }
+
+    // Resolve multi-assignees or scalar assigneeId
+    let finalAssigneeId = task.assigneeId || "";
+    if (Array.isArray(task.assigneeIds) && task.assigneeIds.length > 0) {
+      finalAssigneeId = task.assigneeIds.map((s: string) => s.trim()).filter(Boolean).join(", ");
+    }
+
+    // Validate sprint assignment matches task project
+    if (task.sprintId) {
+      const { rows: sprintRows } = await db.query(
+        "SELECT id, project_id, organization_id FROM sprints WHERE id = $1;",
+        [task.sprintId],
+      );
+      if (!sprintRows[0]) {
+        const error: any = new Error(`Sprint with ID '${task.sprintId}' not found.`);
+        error.status = 400;
+        throw error;
+      }
+      if (sprintRows[0].project_id !== task.projectId) {
+        const error: any = new Error(
+          `Invalid sprint assignment: Sprint '${task.sprintId}' belongs to project '${sprintRows[0].project_id}', not '${task.projectId}'.`
+        );
+        error.status = 400;
+        throw error;
+      }
+      if (organizationId && sprintRows[0].organization_id && sprintRows[0].organization_id !== organizationId) {
+        const error: any = new Error(
+          `Invalid sprint assignment: Sprint belongs to a different organization.`
+        );
+        error.status = 400;
+        throw error;
+      }
+    }
+
     // Validate assignees exist in project
     const { rows: members } = await db.query(
       "SELECT member_id FROM project_members WHERE project_id = $1;",
       [task.projectId],
     );
     const memberIds = new Set(members.map((m) => m.member_id));
-    const assignees = (task.assigneeId || "")
+    const assignees = (finalAssigneeId || "")
       .split(",")
       .map((id: string) => id.trim())
       .filter(Boolean);
@@ -179,8 +238,8 @@ export class TaskService {
       await client.query("BEGIN");
 
       const { rows } = await client.query(
-        `INSERT INTO tasks (id, title, description, status, priority, assignee_id, project_id, due_date, start_date, is_start_date_auto, created_at, updated_at, sprint_id, organization_id, attachments)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb)
+        `INSERT INTO tasks (id, title, description, status, priority, assignee_id, project_id, due_date, start_date, is_start_date_auto, created_at, updated_at, sprint_id, organization_id, attachments, parent_task_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16)
          RETURNING *;`,
         [
           id,
@@ -188,7 +247,7 @@ export class TaskService {
           task.description || "",
           task.status,
           task.priority,
-          task.assigneeId,
+          finalAssigneeId,
           task.projectId,
           task.dueDate || "",
           finalStartDate,
@@ -198,6 +257,7 @@ export class TaskService {
           task.sprintId || null,
           organizationId || null,
           JSON.stringify(task.attachments || []),
+          task.parentTaskId || null,
         ],
       );
 
@@ -226,12 +286,20 @@ export class TaskService {
         created_at,
         updated_at,
         sprint_id,
+        attachments,
+        parent_task_id,
         ...rest
       } = created;
 
+      const parsedAssigneeIds = (assignee_id || "")
+        .split(",")
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+
       return {
         ...rest,
-        assigneeId: assignee_id,
+        assigneeId: assignee_id || "",
+        assigneeIds: parsedAssigneeIds,
         projectId: project_id,
         dueDate: due_date || "",
         startDate: start_date || "",
@@ -239,6 +307,8 @@ export class TaskService {
         createdAt: created_at,
         updatedAt: updated_at,
         sprintId: sprint_id,
+        attachments: attachments || [],
+        parentTaskId: parent_task_id || null,
       };
     } catch (error) {
       await client.query("ROLLBACK");
@@ -255,10 +325,35 @@ export class TaskService {
     }
     const finalProjectId =
       patch.projectId !== undefined ? patch.projectId : currentTask.projectId;
-    const finalAssigneeId =
+
+    let finalAssigneeId =
       patch.assigneeId !== undefined
         ? patch.assigneeId
         : currentTask.assigneeId;
+
+    if (Array.isArray(patch.assigneeIds)) {
+      finalAssigneeId = patch.assigneeIds.map((s: string) => s.trim()).filter(Boolean).join(", ");
+    }
+
+    // Validate sprint assignment if updated
+    if (patch.sprintId !== undefined && patch.sprintId !== null && patch.sprintId !== "") {
+      const { rows: sprintRows } = await db.query(
+        "SELECT id, project_id FROM sprints WHERE id = $1;",
+        [patch.sprintId],
+      );
+      if (!sprintRows[0]) {
+        const error: any = new Error(`Sprint with ID '${patch.sprintId}' not found.`);
+        error.status = 400;
+        throw error;
+      }
+      if (sprintRows[0].project_id !== finalProjectId) {
+        const error: any = new Error(
+          `Invalid sprint assignment: Sprint '${patch.sprintId}' belongs to project '${sprintRows[0].project_id}', not '${finalProjectId}'.`
+        );
+        error.status = 400;
+        throw error;
+      }
+    }
 
     const { rows: members } = await db.query(
       "SELECT member_id FROM project_members WHERE project_id = $1;",
@@ -324,9 +419,9 @@ export class TaskService {
         fieldsToUpdate.push(`priority = $${index++}`);
         values.push(patch.priority);
       }
-      if (patch.assigneeId !== undefined) {
+      if (patch.assigneeId !== undefined || patch.assigneeIds !== undefined) {
         fieldsToUpdate.push(`assignee_id = $${index++}`);
-        values.push(patch.assigneeId);
+        values.push(finalAssigneeId);
       }
       if (patch.projectId !== undefined) {
         fieldsToUpdate.push(`project_id = $${index++}`);
@@ -344,7 +439,6 @@ export class TaskService {
         fieldsToUpdate.push(`is_start_date_auto = $${index++}`);
         values.push(nextIsAuto);
       }
-      // 👈 Handle dynamic updates for sprint_id
       if (patch.sprintId !== undefined) {
         fieldsToUpdate.push(`sprint_id = $${index++}`);
         values.push(patch.sprintId);
@@ -352,6 +446,10 @@ export class TaskService {
       if (patch.attachments !== undefined) {
         fieldsToUpdate.push(`attachments = $${index++}::jsonb`);
         values.push(JSON.stringify(patch.attachments || []));
+      }
+      if (patch.parentTaskId !== undefined) {
+        fieldsToUpdate.push(`parent_task_id = $${index++}`);
+        values.push(patch.parentTaskId || null);
       }
 
       if (fieldsToUpdate.length === 0) {
@@ -398,17 +496,27 @@ export class TaskService {
         created_at,
         updated_at,
         sprint_id,
+        attachments,
+        parent_task_id,
         ...rest
       } = updated;
 
+      const parsedAssigneeIds = (assignee_id || "")
+        .split(",")
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+
       return {
         ...rest,
-        assigneeId: assignee_id,
+        assigneeId: assignee_id || "",
+        assigneeIds: parsedAssigneeIds,
         projectId: project_id,
         dueDate: due_date,
         createdAt: created_at,
         updatedAt: updated_at,
         sprintId: sprint_id,
+        attachments: attachments || [],
+        parentTaskId: parent_task_id || null,
       };
     } catch (error) {
       await client.query("ROLLBACK");
@@ -423,6 +531,13 @@ export class TaskService {
     try {
       await client.query("BEGIN");
 
+      // 1. Cascade delete subtasks recursively
+      await client.query(
+        "DELETE FROM tasks WHERE parent_task_id = $1;",
+        [id],
+      );
+
+      // 2. Delete parent task
       const { rows } = await client.query(
         "DELETE FROM tasks WHERE id = $1 RETURNING *;",
         [id],
@@ -430,6 +545,19 @@ export class TaskService {
       const deletedTask = rows[0];
 
       if (deletedTask) {
+        // Prune attachments from Cloudflare R2 if any
+        if (deletedTask.attachments && Array.isArray(deletedTask.attachments)) {
+          for (const att of deletedTask.attachments) {
+            if (att.url && (att.url.startsWith("http://") || att.url.startsWith("https://"))) {
+              try {
+                await deleteFromR2(att.url);
+              } catch (r2Err) {
+                console.warn(`[Task Deletion] Failed to delete attachment from R2: ${att.url}`, r2Err);
+              }
+            }
+          }
+        }
+
         await client.query(
           `UPDATE projects 
            SET task_count = (SELECT COUNT(*) FROM tasks WHERE project_id = $1),
@@ -454,17 +582,27 @@ export class TaskService {
         created_at,
         updated_at,
         sprint_id,
+        attachments,
+        parent_task_id,
         ...rest
       } = deletedTask;
 
+      const parsedAssigneeIds = (assignee_id || "")
+        .split(",")
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+
       return {
         ...rest,
-        assigneeId: assignee_id,
+        assigneeId: assignee_id || "",
+        assigneeIds: parsedAssigneeIds,
         projectId: project_id,
         dueDate: due_date,
         createdAt: created_at,
         updatedAt: updated_at,
         sprintId: sprint_id,
+        attachments: attachments || [],
+        parentTaskId: parent_task_id || null,
       };
     } catch (error) {
       await client.query("ROLLBACK");

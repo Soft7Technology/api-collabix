@@ -96,7 +96,17 @@ export async function runMigrations() {
       ALTER TABLE organizations ADD COLUMN IF NOT EXISTS screenshot_interval INT DEFAULT 300;
       ALTER TABLE organizations ADD COLUMN IF NOT EXISTS screenshots_blurred BOOLEAN DEFAULT false;
       ALTER TABLE organizations ADD COLUMN IF NOT EXISTS plan VARCHAR(50) DEFAULT 'Pro';
+      ALTER TABLE activity_items ADD COLUMN IF NOT EXISTS organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE;
+      ALTER TABLE tasks ADD COLUMN IF NOT EXISTS parent_task_id VARCHAR REFERENCES tasks(id) ON DELETE CASCADE;
       
+      CREATE INDEX IF NOT EXISTS idx_tasks_org_created_at ON tasks (organization_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks (parent_task_id);
+      CREATE INDEX IF NOT EXISTS idx_projects_org_id ON projects (organization_id);
+      CREATE INDEX IF NOT EXISTS idx_activity_items_org_timestamp ON activity_items (organization_id, timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_discussions_project_id ON project_discussions (project_id);
+      CREATE INDEX IF NOT EXISTS idx_discussions_org_id ON project_discussions (organization_id);
+      CREATE INDEX IF NOT EXISTS idx_discussion_replies_disc_id ON discussion_replies (discussion_id);
+
       CREATE TABLE IF NOT EXISTS monitoring_sessions (
         id VARCHAR PRIMARY KEY,
         user_id VARCHAR REFERENCES users(id) ON DELETE CASCADE,

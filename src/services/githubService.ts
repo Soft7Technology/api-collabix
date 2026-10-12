@@ -79,7 +79,7 @@ export class GithubService {
       };
     } catch (err: any) {
       console.error("GitHub code exchange error:", err.message);
-      throw new Error(`GitHub Authentication failed: ${err.message}`);
+      throw new Error(`GitHub Authentication failed: ${err.message}`, { cause: err });
     }
   }
 
@@ -144,7 +144,7 @@ export class GithubService {
       }));
     } catch (err: any) {
       console.error("GitHub fetch user repos error:", err.message);
-      throw new Error(`Failed to fetch repositories from GitHub: ${err.message}`);
+      throw new Error(`Failed to fetch repositories from GitHub: ${err.message}`, { cause: err });
     }
   }
 
@@ -193,7 +193,7 @@ export class GithubService {
         return `existing_hook_${Date.now()}`;
       }
       console.error(`Failed to create webhook on GitHub repository ${owner}/${repo}:`, err.message);
-      throw new Error(`Failed to register webhook on GitHub repository: ${err.message}`);
+      throw new Error(`Failed to register webhook on GitHub repository: ${err.message}`, { cause: err });
     }
   }
 

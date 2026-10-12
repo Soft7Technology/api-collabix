@@ -1,4 +1,4 @@
-import { db, pool } from "../db/index.js";
+import { db } from "../db/index.js";
 
 export interface CreateWorkReportInput {
   title: string;
@@ -30,7 +30,7 @@ export interface CreateWorkReportInput {
   submittedOn?: string;
 }
 
-export interface UpdateWorkReportInput extends Partial<CreateWorkReportInput> {}
+export type UpdateWorkReportInput = Partial<CreateWorkReportInput>;
 
 export interface WorkReportFilters {
   type?: "weekly" | "monthly" | "yearly" | "all";
@@ -238,7 +238,6 @@ export class DocumentationService {
         `(r.title ILIKE $${paramIndex} OR r.summary ILIKE $${paramIndex} OR u.name ILIKE $${paramIndex} OR r.project_name ILIKE $${paramIndex})`
       );
       values.push(`%${search.trim()}%`);
-      paramIndex++;
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -270,10 +269,9 @@ export class DocumentationService {
   static async getById(id: string, organizationId: string | null, userCtx?: any): Promise<any | null> {
     const conditions = ["r.id = $1"];
     const values: any[] = [id];
-    let paramIndex = 2;
 
     if (organizationId) {
-      conditions.push(`r.organization_id = $${paramIndex++}`);
+      conditions.push("r.organization_id = $2");
       values.push(organizationId);
     }
 
@@ -591,7 +589,7 @@ export class DocumentationService {
     let orgCondition = "";
     if (organizationId) {
       values.push(organizationId);
-      orgCondition = `AND organization_id = $${paramIndex++}`;
+      orgCondition = `AND organization_id = $${paramIndex}`;
     }
 
     const query = `
@@ -633,10 +631,9 @@ export class DocumentationService {
 
     const conditions = ["id = $1"];
     const values = [id, newStatus, JSON.stringify(managerReview)];
-    let paramIndex = 4;
 
     if (organizationId) {
-      conditions.push(`organization_id = $${paramIndex++}`);
+      conditions.push("organization_id = $4");
       values.push(organizationId);
     }
 
@@ -672,10 +669,9 @@ export class DocumentationService {
 
     const conditions = ["id = $1"];
     const values = [id];
-    let paramIndex = 2;
 
     if (organizationId) {
-      conditions.push(`organization_id = $${paramIndex++}`);
+      conditions.push("organization_id = $2");
       values.push(organizationId);
     }
 

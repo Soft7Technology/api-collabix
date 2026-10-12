@@ -191,6 +191,12 @@ export class AuthService {
         [hashedPassword, invite.user_id],
       );
 
+      // Invalidate any pre-existing sessions/refresh tokens
+      await client.query(
+        "DELETE FROM refresh_tokens WHERE user_id = $1;",
+        [invite.user_id],
+      );
+
       const userDetails = await client.query(
         `SELECT u.id, u.name, u.email, u.role_id, u.is_super_admin, u.organization_id, u.department_id,
                 r.name as role_name, r.rank as role_rank,
@@ -285,7 +291,16 @@ export class AuthService {
       }
 
       if (rt.revoked_at) {
-        throw new Error("Refresh token has been revoked.");
+        // Token replay/reuse detected! An already rotated or revoked token is being presented.
+        // Invalidate all active refresh tokens for this compromised account immediately.
+        await client.query(
+          "DELETE FROM refresh_tokens WHERE user_id = $1;",
+          [rt.user_id],
+        );
+        await client.query("COMMIT;");
+        throw new Error(
+          "Refresh token reuse detected. All active sessions have been revoked for security.",
+        );
       }
 
       if (new Date(rt.expires_at) < new Date()) {
@@ -318,7 +333,7 @@ export class AuthService {
       );
       const permissions = permResult.rows.map((r: any) => r.permission_name);
 
-      // Rotate Refresh Token: Revoke current
+      // Rotate Refresh Token: Revoke current immediately
       await client.query(
         "UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1;",
         [rt.id],
@@ -335,6 +350,13 @@ export class AuthService {
         `INSERT INTO refresh_tokens (user_id, token_hash, expires_at) 
          VALUES ($1, $2, $3);`,
         [user.id, newRtHash, newRtExpires],
+      );
+
+      // Immediately clean up expired or older revoked tokens for this user
+      await client.query(
+        `DELETE FROM refresh_tokens 
+         WHERE user_id = $1 AND (revoked_at < NOW() - INTERVAL '1 day' OR expires_at < NOW());`,
+        [user.id],
       );
 
       await client.query("COMMIT;");
@@ -387,6 +409,17 @@ export class AuthService {
     await db.query(
       "UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1 AND revoked_at IS NULL;",
       [tokenHash],
+    );
+  }
+
+  /**
+   * Revokes all active refresh tokens/sessions for a given user.
+   */
+  static async revokeAllUserSessions(userId: string) {
+    if (!userId) return;
+    await db.query(
+      "DELETE FROM refresh_tokens WHERE user_id = $1;",
+      [userId],
     );
   }
 
@@ -613,11 +646,20 @@ export class AuthService {
       // Hash password
       const hashedPassword = await hashPassword(newPassword);
 
-      // Update password
-      await client.query(
-        `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE email = $2;`,
+      // Update password and fetch user id
+      const updateRes = await client.query(
+        `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE email = $2 RETURNING id;`,
         [hashedPassword, emailLower],
       );
+      const updatedUser = updateRes.rows[0];
+
+      // Invalidate/delete all active refresh tokens for this user
+      if (updatedUser?.id) {
+        await client.query(
+          "DELETE FROM refresh_tokens WHERE user_id = $1;",
+          [updatedUser.id],
+        );
+      }
 
       // Mark token as used
       await client.query(

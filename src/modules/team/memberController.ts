@@ -270,12 +270,24 @@ export class MemberController {
         return;
       }
 
+      const orgId = req.user?.organization_id;
+      if (!orgId && !isSuperAdmin) {
+        res.status(400).json({
+          error: {
+            message: "Organization ID is required to modify task creation rights.",
+            status: 400,
+          },
+        });
+        return;
+      }
+
       const { id } = req.params;
       const { canCreateTasks } = req.body;
       const member = await MemberService.updateTaskRights(
         id,
-        req.user?.organization_id || "",
+        orgId || null,
         Boolean(canCreateTasks),
+        isSuperAdmin,
       );
       if (req.user) {
         await DashboardService.logActivity(

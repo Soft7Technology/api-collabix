@@ -29,14 +29,13 @@ export class MemberService {
     },
   ) {
     if (!organizationId) {
-      return [];
+      const error: any = new Error("Organization ID is required to retrieve team members.");
+      error.status = 400;
+      throw error;
     }
-    const interval = "15 minutes";
-    const tickInterval = 300; // 5 minutes per screenshot capture
-
     const params: any[] = [organizationId];
-    let dateCondition = "";
-    
+    let dateCondition: string;
+
     if (dateRange && dateRange.startDate) {
       const start = dateRange.startDate;
       const end = dateRange.endDate || start;
@@ -151,7 +150,7 @@ export class MemberService {
     const params: any[] = [id];
 
     if (organizationId && !userCtx?.isSuperAdmin) {
-      queryStr += ` AND (u.organization_id = $2 OR u.organization_id IS NULL)`;
+      queryStr += ` AND u.organization_id = $2`;
       params.push(organizationId);
     }
 
@@ -212,19 +211,30 @@ export class MemberService {
 
   static async updateTaskRights(
     id: string,
-    organizationId: string,
-    canCreateTasks: boolean
+    organizationId?: string | null,
+    canCreateTasks: boolean = false,
+    isSuperAdmin?: boolean,
   ) {
-    const { rows } = await db.query(
-      `UPDATE users
-       SET can_create_tasks = $1
-       WHERE id = $2 AND organization_id = $3
-       RETURNING id, name, can_create_tasks AS "canCreateTasks";`,
-      [canCreateTasks, id, organizationId]
-    );
+    let queryStr = `
+      UPDATE users
+      SET can_create_tasks = $1, updated_at = NOW()
+      WHERE id = $2
+    `;
+    const params: any[] = [canCreateTasks, id];
+
+    if (organizationId && !isSuperAdmin) {
+      queryStr += ` AND organization_id = $3`;
+      params.push(organizationId);
+    }
+
+    queryStr += ` RETURNING id, name, can_create_tasks AS "canCreateTasks";`;
+
+    const { rows } = await db.query(queryStr, params);
 
     if (!rows[0]) {
-      throw new Error(`Member with ID '${id}' not found in organization.`);
+      const error: any = new Error(`Member with ID '${id}' not found in organization.`);
+      error.status = 404;
+      throw error;
     }
 
     return rows[0];
@@ -269,7 +279,7 @@ export class MemberService {
   }
 
   /**
-   * Invites a new team member. Creates a user as PENDING_INVITATION,
+   * Invites a new team member. Creates a user as PENDING_INVITATION (or re-activates pending/unlinked user),
    * generates a secure invitation token, hashes it, and emails the onboarding link.
    */
   static async invite(
@@ -285,17 +295,10 @@ export class MemberService {
   ) {
     const emailLower = member.email.toLowerCase().trim();
 
-    const existing = await db.query("SELECT id FROM users WHERE email = $1;", [
-      emailLower,
-    ]);
-
-    if (existing.rows[0]) {
-      const error = new Error(
-        "A user with this email address is already registered.",
-      ) as any;
-      error.status = 400;
-      throw error;
-    }
+    const existing = await db.query(
+      "SELECT id, status, organization_id FROM users WHERE email = $1;",
+      [emailLower],
+    );
 
     const roleId = member.roleId;
 
@@ -330,30 +333,67 @@ export class MemberService {
       .toUpperCase()
       .slice(0, 2);
 
-    const userId = `u${Date.now()}`;
     const client = await pool.connect();
 
     try {
       await client.query("BEGIN;");
 
-      // Create pending user
-      const userRes = await client.query(
-        `INSERT INTO users (id, name, role, email, avatar_color, initials, role_id, department_id, status, organization_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDING_INVITATION', $9)
-         RETURNING *;`,
-        [
-          userId,
-          member.name,
-          member.role ?? roleName,
-          emailLower,
-          avatarColor,
-          initials,
-          roleId,
-          departmentId,
-          organizationId || null,
-        ],
-      );
-      const user = userRes.rows[0];
+      let userId: string;
+      let user: any;
+
+      if (existing.rows[0]) {
+        const existingUser = existing.rows[0];
+        if (existingUser.status === "ACTIVE") {
+          const error = new Error(
+            existingUser.organization_id === organizationId
+              ? "A user with this email address is already registered in this organization."
+              : "A user with this email address is already active in another organization.",
+          ) as any;
+          error.status = 400;
+          throw error;
+        }
+
+        userId = existingUser.id;
+        const updateRes = await client.query(
+          `UPDATE users
+           SET name = $1, role = $2, avatar_color = $3, initials = $4, role_id = $5, department_id = $6, status = 'PENDING_INVITATION', organization_id = $7, updated_at = NOW()
+           WHERE id = $8
+           RETURNING *;`,
+          [
+            member.name,
+            member.role ?? roleName,
+            avatarColor,
+            initials,
+            roleId,
+            departmentId,
+            organizationId || null,
+            userId,
+          ],
+        );
+        user = updateRes.rows[0];
+
+        // Prune any previous invitation tokens
+        await client.query("DELETE FROM user_invitations WHERE user_id = $1;", [userId]);
+      } else {
+        userId = `u${Date.now()}`;
+        const userRes = await client.query(
+          `INSERT INTO users (id, name, role, email, avatar_color, initials, role_id, department_id, status, organization_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDING_INVITATION', $9)
+           RETURNING *;`,
+          [
+            userId,
+            member.name,
+            member.role ?? roleName,
+            emailLower,
+            avatarColor,
+            initials,
+            roleId,
+            departmentId,
+            organizationId || null,
+          ],
+        );
+        user = userRes.rows[0];
+      }
 
       // Generate secure random token
       const rawToken = crypto.randomBytes(32).toString("hex");
@@ -522,7 +562,7 @@ export class MemberService {
     let queryStr = "UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2";
     const params: any[] = [designation.trim(), id];
     if (organizationId && !userCtx?.is_super_admin) {
-      queryStr += " AND (organization_id = $3 OR organization_id IS NULL)";
+      queryStr += " AND organization_id = $3";
       params.push(organizationId);
     }
     queryStr += " RETURNING *;";
@@ -552,7 +592,7 @@ export class MemberService {
     let queryStr = "UPDATE users SET department_id = $1, updated_at = NOW() WHERE id = $2";
     const params: any[] = [departmentId, id];
     if (organizationId && !userCtx?.is_super_admin) {
-      queryStr += " AND (organization_id = $3 OR organization_id IS NULL)";
+      queryStr += " AND organization_id = $3";
       params.push(organizationId);
     }
     queryStr += " RETURNING *;";
@@ -564,20 +604,57 @@ export class MemberService {
 
   static async delete(id: string, organizationId?: string | null) {
     if (!organizationId) return null;
-    const { rows } = await db.query(
-      "DELETE FROM users WHERE id = $1 AND organization_id = $2 RETURNING *;",
-      [id, organizationId],
-    );
-    if (!rows[0]) return null;
-    const r = rows[0];
-    return {
-      id: r.id,
-      name: r.name,
-      role: r.role,
-      email: r.email,
-      avatarColor: r.avatar_color,
-      initials: r.initials,
-    };
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN;");
+      await client.query("DELETE FROM user_invitations WHERE user_id = $1;", [id]);
+      await client.query("DELETE FROM refresh_tokens WHERE user_id = $1;", [id]);
+      await client.query("DELETE FROM project_members WHERE member_id = $1;", [id]);
+      await client.query("DELETE FROM meeting_attendees WHERE user_id = $1;", [id]);
+      await client.query("UPDATE tasks SET assignee_id = NULL WHERE assignee_id = $1;", [id]);
+      const { rows } = await client.query(
+        "DELETE FROM users WHERE id = $1 AND organization_id = $2 RETURNING *;",
+        [id, organizationId],
+      );
+      await client.query("COMMIT;");
+      if (!rows[0]) return null;
+      const r = rows[0];
+      return {
+        id: r.id,
+        name: r.name,
+        role: r.role,
+        email: r.email,
+        avatarColor: r.avatar_color,
+        initials: r.initials,
+      };
+    } catch (error) {
+      await client.query("ROLLBACK;");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async deleteDepartment(departmentId: string) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN;");
+      await client.query(
+        "UPDATE users SET department_id = NULL, updated_at = NOW() WHERE department_id = $1;",
+        [departmentId],
+      );
+      const { rows } = await client.query(
+        "DELETE FROM departments WHERE id = $1 RETURNING *;",
+        [departmentId],
+      );
+      await client.query("COMMIT;");
+      return rows[0] || null;
+    } catch (error) {
+      await client.query("ROLLBACK;");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   static async getRoles() {

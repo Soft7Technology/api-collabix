@@ -196,14 +196,16 @@ export class DashboardService {
     } | null,
   ) {
     if (!organizationId) {
-      return [];
+      const error: any = new Error("Organization ID is required to retrieve activity items.");
+      error.status = 400;
+      throw error;
     }
 
     let queryStr = `
       SELECT a.* 
       FROM activity_items a 
-      JOIN users u ON a.actor_id = u.id 
-      WHERE u.organization_id = $1
+      LEFT JOIN users u ON a.actor_id = u.id 
+      WHERE a.organization_id = $1
     `;
     const params: any[] = [organizationId];
 
@@ -215,14 +217,17 @@ export class DashboardService {
       queryStr += ` AND (a.project_id IS NULL OR a.project_id = ANY($2))`;
       params.push(visibleProjectIds);
 
-      // Actor must be in same department and project
-      queryStr += ` AND u.department_id = $3 AND (u.id = $4 OR u.id IN (
-        SELECT member_id FROM project_members WHERE project_id = ANY($2)
-      ))`;
+      // Actor must be in same department and project or null actor system action within project
+      queryStr += ` AND (
+        (u.department_id = $3 AND (u.id = $4 OR u.id IN (
+          SELECT member_id FROM project_members WHERE project_id = ANY($2)
+        )))
+        OR (a.actor_id IS NULL AND a.project_id = ANY($2))
+      )`;
       params.push(userCtx.departmentId || null, userCtx.id);
     }
 
-    queryStr += ` ORDER BY a.id DESC LIMIT 50;`;
+    queryStr += ` ORDER BY a.timestamp DESC, a.id DESC LIMIT 50;`;
 
     const { rows } = await db.query(queryStr, params);
     return rows.map((r) => ({
@@ -235,17 +240,35 @@ export class DashboardService {
   }
 
   static async logActivity(
-    actorId: string,
+    actorId: string | null,
     action: string,
     target: string,
     projectId: string | null = null,
+    organizationId: string | null = null,
   ) {
     try {
       const id = `act-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
       const timestamp = new Date().toISOString();
+
+      let resolvedOrgId = organizationId;
+      if (!resolvedOrgId && actorId) {
+        const { rows } = await db.query(
+          "SELECT organization_id FROM users WHERE id = $1;",
+          [actorId],
+        );
+        resolvedOrgId = rows[0]?.organization_id || null;
+      }
+      if (!resolvedOrgId && projectId) {
+        const { rows } = await db.query(
+          "SELECT organization_id FROM projects WHERE id = $1;",
+          [projectId],
+        );
+        resolvedOrgId = rows[0]?.organization_id || null;
+      }
+
       await db.query(
-        "INSERT INTO activity_items (id, actor_id, action, target, timestamp, project_id) VALUES ($1, $2, $3, $4, $5, $6);",
-        [id, actorId, action, target, timestamp, projectId],
+        "INSERT INTO activity_items (id, actor_id, action, target, timestamp, project_id, organization_id) VALUES ($1, $2, $3, $4, $5, $6, $7);",
+        [id, actorId, action, target, timestamp, projectId, resolvedOrgId],
       );
     } catch (error) {
       console.error("Failed to log activity:", error);

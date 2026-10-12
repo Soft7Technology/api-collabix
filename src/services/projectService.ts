@@ -19,12 +19,13 @@ export class ProjectService {
     organizationId?: string | null;
     isSuperAdmin?: boolean;
   }) {
-    if (userCtx && !userCtx.organizationId && !userCtx.isSuperAdmin) {
-      return [];
+    if (!userCtx?.organizationId) {
+      const error: any = new Error("Organization ID is required to retrieve projects.");
+      error.status = 400;
+      throw error;
     }
 
     const isAdminOrManager =
-      !userCtx ||
       userCtx.isSuperAdmin ||
       (userCtx.roleRank !== undefined && userCtx.roleRank <= 2) ||
       (userCtx.roleName && (
@@ -43,7 +44,7 @@ export class ProjectService {
         WHERE p.organization_id = $1
         GROUP BY p.id;
       `,
-        [userCtx?.organizationId || null],
+        [userCtx.organizationId],
       );
       return rows.map((r) => ({
         id: r.id,
@@ -69,7 +70,7 @@ export class ProjectService {
       GROUP BY p.id
       HAVING ($1 = ANY(COALESCE(array_agg(pm.member_id) FILTER (WHERE pm.member_id IS NOT NULL), '{}')));
     `,
-      [userCtx.id, userCtx.organizationId || null],
+      [userCtx.id, userCtx.organizationId],
     );
     return rows.map((r) => ({
       id: r.id,

@@ -11,13 +11,19 @@ import {
 import { db } from "../../db/index.js";
 import { config } from "../../config/index.js";
 
-// Cookie configurations
+// Cookie configurations — domain is resolved at runtime per-request (see setAuthCookies)
+// so that localhost dev never accidentally sets a broad .soft7.in domain scope.
+// SameSite: 'strict' is intentional for auth cookies: they must NEVER be sent on any
+// cross-origin request (top-level navigation or otherwise). The CSRF cookie is kept as
+// 'lax' separately so the browser still sends it on top-level navigations for token
+// bootstrapping — but every state-mutating request is guarded by the X-CSRF-Token header.
 const cookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
-  sameSite: "lax" as const,
+  sameSite: "strict" as const,
   path: "/",
-  domain: config.COOKIE_DOMAIN || undefined,
+  // domain is NOT set here; it is injected per-request in setAuthCookies()
+  // so that localhost connections never receive a broad domain attribute.
 };
 
 const ACCESS_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days persistent session
@@ -267,10 +273,13 @@ export class AuthController {
         await AuthService.revokeRefreshToken(refreshToken);
       }
 
+      const isLocalhost = req.hostname === "localhost" || req.hostname === "127.0.0.1";
+      const domainValue = isLocalhost ? undefined : (config.COOKIE_DOMAIN || undefined);
+
       // Clear all authentication and CSRF cookies
-      res.clearCookie("access_token", { path: "/" });
-      res.clearCookie("refresh_token", { path: "/" });
-      res.clearCookie("csrf_token", { path: "/" });
+      res.clearCookie("access_token", { path: "/", domain: domainValue });
+      res.clearCookie("refresh_token", { path: "/", domain: domainValue });
+      res.clearCookie("csrf_token", { path: "/", domain: domainValue });
 
       res.json({ message: "Successfully logged out." });
     } catch (error) {
@@ -455,6 +464,23 @@ export class AuthController {
         "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2;",
         [newHash, req.user.id],
       );
+
+      // Invalidate all existing active sessions/refresh tokens for this user
+      await db.query("DELETE FROM refresh_tokens WHERE user_id = $1;", [req.user.id]);
+
+      // Generate a new secure refresh token for the current authenticated session
+      const rawRefreshToken = crypto.randomBytes(40).toString("hex");
+      const rfHash = hashToken(rawRefreshToken);
+      const rfExpires = new Date();
+      rfExpires.setDate(rfExpires.getDate() + 30);
+
+      await db.query(
+        "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3);",
+        [req.user.id, rfHash, rfExpires],
+      );
+
+      // Refresh authentication cookies for the current session
+      AuthController.setAuthCookies(req, res, req.user.id, rawRefreshToken);
 
       res.json({ message: "Password updated successfully." });
     } catch (error: any) {
@@ -738,10 +764,14 @@ export class AuthController {
         return;
       }
 
-      if (!Buffer.isBuffer(req.body)) {
+      const rawBody = Buffer.isBuffer(req.body)
+        ? req.body
+        : req.rawBody;
+
+      if (!rawBody || !Buffer.isBuffer(rawBody)) {
         res.status(400).json({
           error: {
-            message: "Webhook body must be raw.",
+            message: "Webhook body must be available in raw format for signature verification.",
             status: 400,
           },
         });
@@ -749,7 +779,7 @@ export class AuthController {
       }
 
       const isValid = await RazorpayService.verifyRazorpayWebhookSignature(
-        req.body,
+        rawBody,
         signature
       );
 
@@ -763,7 +793,10 @@ export class AuthController {
         return;
       }
 
-      const payload = JSON.parse(req.body.toString("utf8"));
+      const payload =
+        typeof req.body === "object" && !Buffer.isBuffer(req.body) && req.body !== null
+          ? req.body
+          : JSON.parse(rawBody.toString("utf8"));
 
       console.log("Razorpay webhook:", payload.event);
 

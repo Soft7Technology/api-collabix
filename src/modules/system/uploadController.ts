@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { uploadToR2, r2Client } from "../../services/storageService.js";
 
@@ -39,7 +40,8 @@ export class UploadController {
           fs.mkdirSync(uploadDir, { recursive: true });
         }
 
-        const safeName = `${Date.now()}-${originalname.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+        const uniqueSuffix = crypto.randomBytes(8).toString("hex");
+        const safeName = `${Date.now()}-${uniqueSuffix}-${originalname.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
         const filePath = path.join(uploadDir, safeName);
         fs.writeFileSync(filePath, buffer);
 
