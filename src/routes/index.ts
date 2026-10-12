@@ -33,6 +33,7 @@ import {
   createBranchSchema,
   createMeetingSchema,
   updateMeetingSchema,
+  verifyPasscodeSchema,
   createWorkReportSchema,
   updateWorkReportSchema,
   reviewWorkReportSchema,
@@ -204,6 +205,11 @@ router.post(
   MeetingController.createMeeting,
 );
 router.post("/meetings/instant", MeetingController.createInstantMeeting);
+router.post(
+  "/meetings/:id/verify-passcode",
+  validate(verifyPasscodeSchema),
+  MeetingController.verifyPasscode,
+);
 router.patch(
   "/meetings/:id",
   validate(updateMeetingSchema),
