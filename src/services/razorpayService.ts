@@ -49,8 +49,9 @@ const basicAuth = Buffer.from(
 export class RazorpayService{
 
   static async createRazorpaySubscription(params: {
-    planId: string;
+  planId: string;
   totalCount: number;
+  startAt?: number;
   notes?: Record<string, string>;
 }) {
   const response = await fetch(
@@ -66,6 +67,7 @@ export class RazorpayService{
         total_count: params.totalCount,
         quantity: 1,
         customer_notify: true,
+        ...(params.startAt && { start_at: params.startAt }),
         notes: params.notes,
       }),
     }
@@ -83,6 +85,47 @@ export class RazorpayService{
   }
 
   throw new Error("Failed to create Razorpay subscription.");
+}
+
+  return data as RazorpaySubscriptionResponse;
+}
+
+static async updateRazorpaySubscription(params: {
+  razorpaySubscriptionId: any;
+  planId: any;
+  scheduleChangeAt: "now" | "cycle_end";
+  remainingCount?: number | undefined;
+}){
+const response = await fetch(
+    `https://api.razorpay.com/v1/subscriptions/${params.razorpaySubscriptionId}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Basic ${basicAuth}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        plan_id: params.planId,
+        schedule_change_at: params.scheduleChangeAt,
+        remaining_count: params.remainingCount,
+        quantity: 1,
+        customer_notify: true,
+      }),
+    }
+  );
+
+  const data = (await response.json()) as | RazorpaySubscriptionResponse | RazorpayErrorResponse;
+
+ if (!response.ok) {
+  if ("error" in data) {
+    throw new Error(
+      data.error?.description ||
+      data.error?.message ||
+      "Failed to create Razorpay subscription."
+    );
+  }
+
+  throw new Error("Failed to update Razorpay subscription.");
 }
 
   return data as RazorpaySubscriptionResponse;
@@ -108,6 +151,7 @@ static async verifyRazorpaySubscriptionPayment(params: {
 
   return generatedSignature === signature;
 }
+
 static async getRazorpaySubscription(
   razorpaySubscriptionId: string,
 ) {
@@ -193,5 +237,5 @@ static async verifyRazorpayWebhookSignature(
   }
 
   return data as RazorpaySubscriptionResponse;
-}
+};
 }
