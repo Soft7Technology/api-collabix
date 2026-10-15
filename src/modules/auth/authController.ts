@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { AuthService, hashToken } from "../../services/authService.js";
+import { SuperService } from "../../services/superService.js";
 import { RazorpayService } from "../../services/razorpayService.js";
 import {
   generateAccessToken,
@@ -120,6 +121,21 @@ export class AuthController {
               message:
                 "Only platform administrators are allowed to log in here.",
               status: 403,
+            },
+          });
+          return;
+        }
+      }
+
+      // Block non-superadmins during system maintenance mode
+      if (!user.isSuperAdmin) {
+        const isMaint = await SuperService.isMaintenanceModeActive();
+        if (isMaint) {
+          res.status(503).json({
+            error: {
+              message: "Collabix platform is currently undergoing scheduled maintenance. Customer access is temporarily suspended.",
+              code: "MAINTENANCE_MODE",
+              status: 503,
             },
           });
           return;
@@ -294,7 +310,7 @@ export class AuthController {
                 u.github_username AS "githubUsername",
                 r.name AS "roleName", r.rank AS "roleRank",
                 d.name AS "departmentName",
-                o.name AS "orgName", o.subscription_status AS "subscriptionStatus", o.trial_ends_at AS "trialEndsAt", o.is_approved AS "orgIsApproved", o.timezone AS "orgTimezone", o.created_at AS "orgCreatedAt"
+                o.name AS "orgName", o.logo_url AS "orgLogoUrl", COALESCE(o.plan, 'Pro') AS "orgPlan", o.subscription_status AS "subscriptionStatus", o.trial_ends_at AS "trialEndsAt", o.is_approved AS "orgIsApproved", o.timezone AS "orgTimezone", o.created_at AS "orgCreatedAt"
          FROM users u
          JOIN roles r ON u.role_id = r.id
          LEFT JOIN departments d ON u.department_id = d.id
@@ -331,6 +347,8 @@ export class AuthController {
           ? {
               id: user.organizationId,
               name: user.orgName,
+              logoUrl: user.orgLogoUrl || null,
+              plan: user.orgPlan || "Pro",
               timezone: user.orgTimezone,
               subscriptionStatus: user.subscriptionStatus,
               trialEndsAt: user.trialEndsAt,
@@ -476,28 +494,48 @@ export class AuthController {
         return;
       }
 
-      const { name, timezone } = req.body;
+      const { name, timezone, logoUrl } = req.body;
 
-      // Check if organization name is already taken
-      const { rows: existing } = await db.query(
-        "SELECT id FROM organizations WHERE LOWER(name) = LOWER($1) AND id != $2;",
-        [name.trim(), req.user.organization_id],
-      );
-      if (existing.length > 0) {
-        res.status(400).json({
-          error: {
-            message:
-              "An organization with this company name is already registered.",
-            status: 400,
-          },
-        });
-        return;
+      if (name && name.trim()) {
+        // Check if organization name is already taken
+        const { rows: existing } = await db.query(
+          "SELECT id FROM organizations WHERE LOWER(name) = LOWER($1) AND id != $2;",
+          [name.trim(), req.user.organization_id],
+        );
+        if (existing.length > 0) {
+          res.status(400).json({
+            error: {
+              message:
+                "An organization with this company name is already registered.",
+              status: 400,
+            },
+          });
+          return;
+        }
       }
 
-      await db.query(
-        "UPDATE organizations SET name = $1, timezone = $2, updated_at = NOW() WHERE id = $3;",
-        [name.trim(), timezone, req.user.organization_id],
-      );
+      const updates: string[] = ["updated_at = NOW()"];
+      const params: any[] = [];
+
+      if (name !== undefined) {
+        params.push(name.trim());
+        updates.push(`name = $${params.length}`);
+      }
+
+      if (timezone !== undefined) {
+        params.push(timezone);
+        updates.push(`timezone = $${params.length}`);
+      }
+
+      if (logoUrl !== undefined) {
+        params.push(logoUrl);
+        updates.push(`logo_url = $${params.length}`);
+      }
+
+      params.push(req.user.organization_id);
+      const queryStr = `UPDATE organizations SET ${updates.join(", ")} WHERE id = $${params.length} RETURNING *;`;
+
+      await db.query(queryStr, params);
 
       res.json({ message: "Organization updated successfully." });
     } catch (error: any) {
@@ -623,206 +661,272 @@ export class AuthController {
    * POST /auth/subscription/verify
    */
   static async verifySubscriptionPayment(
-  req: Request,
-  res: Response,
-  next: NextFunction
-) {
-  try {
-    const user = (req as any).user;
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const user = (req as any).user;
 
-    if (!user || !user.organization_id) {
-      res.status(400).json({
-        error: {
-          message: "Organization ID is missing.",
-          status: 400,
-        },
-      });
-      return;
-    }
+      if (!user || !user.organization_id) {
+        res.status(400).json({
+          error: {
+            message: "Organization ID is missing.",
+            status: 400,
+          },
+        });
+        return;
+      }
 
-    const {
-      razorpayPaymentId,
-      razorpaySubscriptionId,
-      razorpaySignature,
-    } = req.body;
-
-    if (
-      !razorpayPaymentId ||
-      !razorpaySubscriptionId ||
-      !razorpaySignature
-    ) {
-      res.status(400).json({
-        error: {
-          message: "Payment verification details are required.",
-          status: 400,
-        },
-      });
-      return;
-    }
-
-    const result =
-      await AuthService.verifySubscriptionPayment({
-        organizationId: user.organization_id,
+      const {
         razorpayPaymentId,
         razorpaySubscriptionId,
         razorpaySignature,
+      } = req.body;
+
+      if (
+        !razorpayPaymentId ||
+        !razorpaySubscriptionId ||
+        !razorpaySignature
+      ) {
+        res.status(400).json({
+          error: {
+            message: "Payment verification details are required.",
+            status: 400,
+          },
+        });
+        return;
+      }
+
+      const result =
+        await AuthService.verifySubscriptionPayment({
+          organizationId: user.organization_id,
+          razorpayPaymentId,
+          razorpaySubscriptionId,
+          razorpaySignature,
+        });
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({
+        error: {
+          message: error.message,
+          status: 400,
+        }, 
       });
-
-    res.json(result);
-  } catch (error: any) {
-    res.status(400).json({
-      error: {
-        message: error.message,
-        status: 400,
-      }, 
-    });
+    }
   }
-}
 
-/**
+  /**
    * POST /auth/subscription/webhook
    */
-static async razorpayWebhook(
-  req: Request,
-  res: Response,
-  next: NextFunction
-) {
-  try {
-    const signature = req.headers["x-razorpay-signature"];
+  static async razorpayWebhook(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const signature = req.headers["x-razorpay-signature"];
 
-    if (typeof signature !== "string") {
+      if (typeof signature !== "string") {
+        res.status(400).json({
+          error: {
+            message: "Missing Razorpay webhook signature.",
+            status: 400,
+          },
+        });
+        return;
+      }
+
+      if (!Buffer.isBuffer(req.body)) {
+        res.status(400).json({
+          error: {
+            message: "Webhook body must be raw.",
+            status: 400,
+          },
+        });
+        return;
+      }
+
+      const isValid = await RazorpayService.verifyRazorpayWebhookSignature(
+        req.body,
+        signature
+      );
+
+      if (!isValid) {
+        res.status(400).json({
+          error: {
+            message: "Invalid Razorpay webhook signature.",
+            status: 400,
+          },
+        });
+        return;
+      }
+
+      const payload = JSON.parse(req.body.toString("utf8"));
+
+      console.log("Razorpay webhook:", payload.event);
+
+      await AuthService.handleRazorpayWebhook(payload);
+
+      res.status(200).json({
+        success: true,
+      });
+    } catch (error: any) {
+      console.error("Razorpay webhook error:", error);
+
+      res.status(500).json({
+        error: {
+          message: "Webhook processing failed.",
+          status: 500,
+        },
+      });
+    } 
+  }
+
+  /**
+   * POST /auth/subscription/create-order
+   */
+  static async createSubscriptionOrder(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    return AuthController.updateSubscription(req, res, next);
+  }
+
+  /**
+   * POST /auth/subscription/cancel
+   */
+  static async cancelSubscription(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const user = (req as any).user;
+
+      if (!user || !user.organization_id) {
+        res.status(400).json({
+          error: {
+            message: "Organization ID is missing.",
+            status: 400,
+          },
+        });
+        return;
+      }
+
+      const isAdmin =
+        user.isSuperAdmin ||
+        user.is_super_admin ||
+        user.role_name === "Admin" ||
+        user.role_rank === 1 ||
+        (user.permissions &&
+          user.permissions.includes("admin:manage"));
+
+      if (!isAdmin) {
+        res.status(403).json({
+          error: {
+            message:
+              "Only organization Admins are authorized to cancel subscriptions.",
+            status: 403,
+          },
+        });
+        return;
+      }
+
+      const result =
+        await AuthService.cancelSubscription({
+          organizationId: user.organization_id,
+        });
+
+      res.json(result);
+    } catch (error: any) {
       res.status(400).json({
         error: {
-          message: "Missing Razorpay webhook signature.",
+          message: error.message,
           status: 400,
         },
       });
-      return;
     }
+  }
 
-    if (!Buffer.isBuffer(req.body)) {
-      res.status(400).json({
-        error: {
-          message: "Webhook body must be raw.",
-          status: 400,
-        },
-      });
-      return;
-    }
+  /**
+   * GET /auth/subscription
+   */
+  static async getOrganizationSubscription(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const user = (req as any).user;
 
-    const isValid = await RazorpayService.verifyRazorpayWebhookSignature(
-      req.body,
-      signature
-    );
+      if (!user?.organization_id) {
+        res.status(401).json({
+          error: {
+            message: "Unauthorized.",
+            status: 401,
+          },
+        });
+        return;
+      }
 
-    if (!isValid) {
-      res.status(400).json({
-        error: {
-          message: "Invalid Razorpay webhook signature.",
-          status: 400,
-        },
-      });
-      return;
-    }
-
-    const payload = JSON.parse(req.body.toString("utf8"));
-
-    console.log("Razorpay webhook:", payload.event);
-
-    await AuthService.handleRazorpayWebhook(payload);
-
-    res.status(200).json({
-      success: true,
-    });
-  } catch (error: any) {
-    console.error("Razorpay webhook error:", error);
-
-    res.status(500).json({
-      error: {
-        message: "Webhook processing failed.",
-        status: 500,
-      },
-    });
-  } 
-}
-
-static async cancelSubscription(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) {
-  try {
-    const user = (req as any).user;
-
-    if (!user || !user.organization_id) {
-      res.status(400).json({
-        error: {
-          message: "Organization ID is missing.",
-          status: 400,
-        },
-      });
-      return;
-    }
-
-    const isAdmin =
-      user.isSuperAdmin ||
-      user.role_name === "Admin" ||
-      user.role_rank === 1 ||
-      (user.permissions &&
-        user.permissions.includes("admin:manage"));
-
-    if (!isAdmin) {
-      res.status(403).json({
-        error: {
-          message:
-            "Only organization Admins are authorized to cancel subscriptions.",
-          status: 403,
-        },
-      });
-      return;
-    }
-
-    const result =
-      await AuthService.cancelSubscription({
+      const subscription = await AuthService.getOrganizationSubscription({
         organizationId: user.organization_id,
       });
 
-    res.json(result);
-  } catch (error: any) {
-    res.status(400).json({
-      error: {
-        message: error.message,
-        status: 400,
-      },
-    });
+      res.json({ subscription });
+    } catch (error) {
+      next(error);
+    }
   }
-}
 
-static async getOrganizationSubscription(
-  req: Request,
-  res: Response,
-  next: NextFunction
-) {
-  try {
-    const user = (req as any).user;
+  /**
+   * GET /auth/subscription
+   */
+  static async getSubscription(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = (req as any).user;
+      if (!user || !user.organization_id) {
+        res.status(200).json({ subscription: { subscription: null } });
+        return;
+      }
 
-    if (!user?.organization_id) {
-      res.status(401).json({
-        error: {
-          message: "Unauthorized.",
-          status: 401,
+      const { rows } = await db.query(
+        `SELECT id, name, COALESCE(plan, 'Pro') AS plan, subscription_status, trial_ends_at, created_at
+         FROM organizations WHERE id = $1;`,
+        [user.organization_id],
+      );
+
+      const org = rows[0];
+      if (!org) {
+        res.status(200).json({ subscription: { subscription: null } });
+        return;
+      }
+
+      const planName = org.plan || "Pro";
+      const status = org.subscription_status || "active";
+
+      const subscriptionObj = {
+        id: org.id,
+        planName,
+        billingCycle: "monthly",
+        status: status,
+        currentPeriodStart: org.created_at || new Date().toISOString(),
+        currentPeriodEnd: org.trial_ends_at || null,
+        startedAt: org.created_at || new Date().toISOString(),
+        cancelledAt: null,
+        cancelAtPeriodEnd: false,
+      };
+
+      res.status(200).json({
+        subscription: {
+          subscription: subscriptionObj,
         },
       });
-      return;
+    } catch (error: any) {
+      res.status(200).json({ subscription: { subscription: null } });
     }
-
-    const subscription = await AuthService.getOrganizationSubscription({
-      organizationId: user.organization_id,
-  });
-
-    res.json({ subscription });
-  } catch (error) {
-    next(error);
   }
-}
 }

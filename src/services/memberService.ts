@@ -53,7 +53,7 @@ export class MemberService {
         (SELECT status FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_status,
         (SELECT screenshot_path FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_path,
         (SELECT captured_at FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_time,
-        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status != 'lunch' AND ${dateCondition}) as today_seconds,
+        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.status = 'active' OR sl.status = 'inactive' OR (sl.status = 'stopped' AND sl.duration_seconds > 0)) AND ${dateCondition}) as today_seconds,
         (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'lunch' AND ${dateCondition}) as today_lunch_seconds,
         (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'inactive' AND ${dateCondition}) as today_idle_seconds,
         (SELECT MIN(sl.captured_at) FROM screen_logs sl WHERE sl.user_id = u.id AND ${dateCondition}) as first_clock_in,
@@ -64,14 +64,17 @@ export class MemberService {
       WHERE u.organization_id = $1
     `;
 
-    const isAdmin =
+    const isAdminOrManager =
       !userCtx ||
       userCtx.isSuperAdmin ||
-      userCtx.roleRank <= 1 ||
-      (userCtx.roleName && userCtx.roleName.toLowerCase() === "admin") ||
-      (userCtx.roleName && userCtx.roleName.toLowerCase() === "super admin");
+      (userCtx.roleRank !== undefined && userCtx.roleRank <= 2) ||
+      (userCtx.roleName && (
+        userCtx.roleName.toLowerCase() === "admin" ||
+        userCtx.roleName.toLowerCase() === "super admin" ||
+        userCtx.roleName.toLowerCase() === "manager"
+      ));
 
-    if (!isAdmin && userCtx?.id) {
+    if (!isAdminOrManager && userCtx?.id) {
       params.push(userCtx.id);
       const userIdx = params.length;
       queryStr += ` AND (
@@ -136,7 +139,7 @@ export class MemberService {
         (SELECT status FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_status,
         (SELECT screenshot_path FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_path,
         (SELECT captured_at FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_time,
-        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status != 'lunch' AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as today_seconds,
+        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.status = 'active' OR sl.status = 'inactive' OR (sl.status = 'stopped' AND sl.duration_seconds > 0)) AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as today_seconds,
         (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'lunch' AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as today_lunch_seconds,
         (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'inactive' AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as today_idle_seconds,
         (SELECT MIN(sl.captured_at) FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as first_clock_in,
@@ -153,14 +156,17 @@ export class MemberService {
       params.push(organizationId);
     }
 
-    const isTargetAdmin =
+    const isTargetAdminOrManager =
       !userCtx ||
       userCtx.isSuperAdmin ||
-      userCtx.roleRank <= 1 ||
-      (userCtx.roleName && userCtx.roleName.toLowerCase() === "admin") ||
-      (userCtx.roleName && userCtx.roleName.toLowerCase() === "super admin");
+      (userCtx.roleRank !== undefined && userCtx.roleRank <= 2) ||
+      (userCtx.roleName && (
+        userCtx.roleName.toLowerCase() === "admin" ||
+        userCtx.roleName.toLowerCase() === "super admin" ||
+        userCtx.roleName.toLowerCase() === "manager"
+      ));
 
-    if (!isTargetAdmin && userCtx?.id && userCtx.id !== id) {
+    if (!isTargetAdminOrManager && userCtx?.id && userCtx.id !== id) {
       params.push(userCtx.id);
       const userIdx = params.length;
       queryStr += ` AND u.id IN (

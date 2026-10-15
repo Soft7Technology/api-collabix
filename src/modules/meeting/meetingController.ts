@@ -201,4 +201,31 @@ export class MeetingController {
       next(error);
     }
   }
+
+  static async getMessages(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const organizationId = req.user?.organization_id || null;
+      const messages = await MeetingService.getMeetingMessages(id, organizationId);
+      res.json(messages);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async sendMessage(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const organizationId = req.user?.organization_id || null;
+      const message = await MeetingService.createMeetingMessage(
+        id,
+        req.body,
+        organizationId,
+        req.user
+      );
+      res.status(201).json(message);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
