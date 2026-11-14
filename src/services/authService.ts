@@ -1028,47 +1028,58 @@ static async handleRazorpayWebhook(payload: any) {
              razorpay_customer_id = $1,
              updated_at = NOW()
          WHERE razorpay_subscription_id = $2`,
-        [
-          subscription.customer_id,
-          subscription.id,
-        ]
+        [subscription.customer_id, subscription.id],
       );
       break;
 
     case "subscription.activated": {
-    const result =  await pool.query(
-        `UPDATE subscriptions
-         SET status = 'active',
-             razorpay_customer_id = $1,
-             current_period_start = $2,
-             current_period_end = $3,
-             started_at = COALESCE(started_at, NOW()),
-             updated_at = NOW()
-         WHERE razorpay_subscription_id = $4
-         RETURNING organization_id`,
-        [
-          subscription.customer_id ?? null,
-          subscription.current_start
-            ? new Date(subscription.current_start * 1000)
-            : null,
-          subscription.current_end
-            ? new Date(subscription.current_end * 1000)
-            : null,
-          subscription.id,
-        ]
-      );
+      const client = await pool.connect();
 
-      const organizationId =
-        result.rows[0]?.organization_id;
+      try {
+        await client.query("BEGIN");
 
-      if (organizationId) {
-        await pool.query(
-          `UPDATE organizations
-           SET subscription_status = 'ACTIVE',
-               updated_at = NOW()
-           WHERE id = $1`,
-          [organizationId]
+        const result = await client.query(
+          `UPDATE subscriptions
+       SET status = 'active',
+           razorpay_customer_id = $1,
+           current_period_start = $2,
+           current_period_end = $3,
+           started_at = COALESCE(started_at, NOW()),
+           updated_at = NOW()
+       WHERE razorpay_subscription_id = $4
+       RETURNING organization_id`,
+          [
+            subscription.customer_id ?? null,
+            subscription.current_start
+              ? new Date(subscription.current_start * 1000)
+              : null,
+            subscription.current_end
+              ? new Date(subscription.current_end * 1000)
+              : null,
+            subscription.id,
+          ],
         );
+
+        const organizationId = result.rows[0]?.organization_id;
+
+        if (!organizationId) {
+          throw new Error(`Subscription not found: ${subscription.id}`);
+        }
+
+        await client.query(
+          `UPDATE organizations
+       SET subscription_status = 'active',
+           updated_at = NOW()
+       WHERE id = $1`,
+          [organizationId],
+        );
+
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
       }
 
       break;
@@ -1090,7 +1101,7 @@ static async handleRazorpayWebhook(payload: any) {
             ? new Date(subscription.current_end * 1000)
             : null,
           subscription.id,
-        ]
+        ],
       );
       break;
 
@@ -1100,7 +1111,7 @@ static async handleRazorpayWebhook(payload: any) {
          SET status = 'pending',
              updated_at = NOW()
          WHERE razorpay_subscription_id = $1`,
-        [subscription.id]
+        [subscription.id],
       );
       break;
 
@@ -1110,60 +1121,91 @@ static async handleRazorpayWebhook(payload: any) {
          SET status = 'paused',
              updated_at = NOW()
          WHERE razorpay_subscription_id = $1`,
-        [subscription.id]
+        [subscription.id],
       );
       break;
 
-   case "subscription.cancelled": {
-  const result = await pool.query(
-    `UPDATE subscriptions
-     SET status = 'cancelled',
-         cancel_at_period_end = FALSE,
-         cancelled_at = COALESCE(cancelled_at, NOW()),
-         updated_at = NOW()
-     WHERE razorpay_subscription_id = $1
-     RETURNING organization_id`,
-    [subscription.id],
-  );
+    case "subscription.cancelled": {
+      const client = await pool.connect();
 
-  const organizationId = result.rows[0]?.organization_id;
+      try {
+        await client.query("BEGIN");
 
-  if (organizationId) {
-    await pool.query(
-      `UPDATE organizations
-       SET subscription_status = 'EXPIRED',
+        const result = await client.query(
+          `UPDATE subscriptions
+       SET status = 'cancelled',
+           cancel_at_period_end = FALSE,
+           cancelled_at = COALESCE(cancelled_at, NOW()),
+           updated_at = NOW()
+       WHERE razorpay_subscription_id = $1
+       RETURNING organization_id`,
+          [subscription.id],
+        );
+
+        const organizationId = result.rows[0]?.organization_id;
+
+        if (!organizationId) {
+          throw new Error(`Subscription not found: ${subscription.id}`);
+        }
+
+        await client.query(
+          `UPDATE organizations
+       SET subscription_status = 'expired',
            updated_at = NOW()
        WHERE id = $1`,
-      [organizationId],
-    );
-  }
+          [organizationId],
+        );
 
-  break;
-}
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      break;
+    }
 
     case "subscription.completed": {
-  await pool.query(
-    `UPDATE subscriptions
-     SET status = 'expired',
-         updated_at = NOW()
-     WHERE razorpay_subscription_id = $1`,
-    [subscription.id]
-  );
+      const client = await pool.connect();
 
-  await pool.query(
-    `UPDATE organizations
-     SET subscription_status = 'EXPIRED',
-         updated_at = NOW()
-     WHERE id = (
-       SELECT organization_id
-       FROM subscriptions
+      try {
+        await client.query("BEGIN");
+
+        const result = await client.query(
+          `UPDATE subscriptions
+       SET status = 'expired',
+           updated_at = NOW()
        WHERE razorpay_subscription_id = $1
-     )`,
-    [subscription.id]
-  );
+       RETURNING organization_id`,
+          [subscription.id],
+        );
 
-  break;
-}
+        const organizationId = result.rows[0]?.organization_id;
+
+        if (!organizationId) {
+          throw new Error(`Subscription not found: ${subscription.id}`);
+        }
+
+        await client.query(
+          `UPDATE organizations
+       SET subscription_status = 'expired',
+           updated_at = NOW()
+       WHERE id = $1`,
+          [organizationId],
+        );
+
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      break;
+    }
 
     default:
       console.log(`Unhandled Razorpay event: ${event}`);
