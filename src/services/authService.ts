@@ -949,46 +949,62 @@ const currentPeriodEnd =
       )
     : null;
 
- const updatedSubscriptionRes = await pool.query(
-  `UPDATE subscriptions
-   SET status = 'active',
-       razorpay_customer_id = $1,
-       started_at = COALESCE(
-         started_at,
-         NOW()
-       ),
-       current_period_start = $2,
-       current_period_end = $3,
-       updated_at = NOW()
-   WHERE id = $4
-   RETURNING
-     id,
-     organization_id,
-     plan_id,
-     billing_cycle,
-     status,
-     razorpay_subscription_id,
-     started_at,
-     current_period_start,
-     current_period_end`,
-  [
-    razorpaySubscription.customer_id ?? null,
-    currentPeriodStart,
-    currentPeriodEnd,
-    subscription.id,
-  ],
-);
+const client = await pool.connect();
 
-  const updatedSubscription =
-    updatedSubscriptionRes.rows[0];
+let updatedSubscription;
 
-  await pool.query(
+try {
+  await client.query("BEGIN");
+
+  const updatedSubscriptionRes = await client.query(
+    `UPDATE subscriptions
+     SET status = 'active',
+         razorpay_customer_id = $1,
+         started_at = COALESCE(started_at, NOW()),
+         current_period_start = $2,
+         current_period_end = $3,
+         updated_at = NOW()
+     WHERE id = $4
+     RETURNING
+       id,
+       organization_id,
+       plan_id,
+       billing_cycle,
+       status,
+       razorpay_subscription_id,
+       started_at,
+       current_period_start,
+       current_period_end`,
+    [
+      razorpaySubscription.customer_id ?? null,
+      currentPeriodStart,
+      currentPeriodEnd,
+      subscription.id,
+    ],
+  );
+
+  updatedSubscription = updatedSubscriptionRes.rows[0];
+
+  if (!updatedSubscription) {
+    throw new Error("Subscription update failed.");
+  }
+
+  await client.query(
     `UPDATE organizations
-     SET subscription_status = 'ACTIVE',
+     SET subscription_status = 'active',
          updated_at = NOW()
      WHERE id = $1`,
-    [organizationId]
+    [organizationId],
   );
+
+  await client.query("COMMIT");
+} catch (error) {
+  await client.query("ROLLBACK");
+  throw error;
+} finally {
+  client.release();
+}
+
 
   return {
     message: "Payment verified successfully.",
