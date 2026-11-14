@@ -1132,7 +1132,6 @@ static async handleRazorpayWebhook(payload: any) {
     await pool.query(
       `UPDATE organizations
        SET subscription_status = 'EXPIRED',
-           trial_ends_at = NULL,
            updated_at = NOW()
        WHERE id = $1`,
       [organizationId],
