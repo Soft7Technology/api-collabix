@@ -1321,11 +1321,13 @@ static async getOrganizationSubscription(params:{
   const { organizationId } = params;
 
    const res = await db.query(
-    `SELECT
+     `SELECT
        id,
        plan_id,
        billing_cycle,
        status,
+       started_at,
+       cancelled_at,
        current_period_start,
        current_period_end,
        cancel_at_period_end
@@ -1333,8 +1335,8 @@ static async getOrganizationSubscription(params:{
      WHERE organization_id = $1
        AND status = 'active'
      LIMIT 1`,
-    [organizationId],
-  );
+     [organizationId],
+   );
 
   const organizationSubscription =  res.rows[0] ?? null;
 
