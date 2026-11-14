@@ -106,7 +106,14 @@ static async verifyRazorpaySubscriptionPayment(params: {
     .update(`${paymentId}|${subscriptionId}`)
     .digest("hex");
 
-  return generatedSignature === signature;
+  if (!/^[a-fA-F0-9]{64}$/.test(signature)) {
+    return false;
+  }
+
+  const generatedBuffer = Buffer.from(generatedSignature, "hex");
+  const receivedBuffer = Buffer.from(signature, "hex");
+
+  return crypto.timingSafeEqual(generatedBuffer, receivedBuffer);
 }
 static async getRazorpaySubscription(
   razorpaySubscriptionId: string,
@@ -155,7 +162,15 @@ static async verifyRazorpayWebhookSignature(
   .update(rawBody)
     .digest("hex");
 
-    return expectedSignature === signature;
+    if (!/^[a-fA-F0-9]{64}$/.test(signature)) {
+      return false;
+    }
+
+    const receivedBuffer = Buffer.from(signature, "hex");
+
+    const expectedBuffer = Buffer.from(expectedSignature, "hex");
+
+    return crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
   }
   
   static async cancelRazorpaySubscription(
