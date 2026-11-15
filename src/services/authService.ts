@@ -803,71 +803,87 @@ export class AuthService {
         databaseSubscriptionId = subscriptionRes.rows[0].id;
       }
 
-      try {
-        // Create the Razorpay subscription.
-        const totalCount = billingCycle === "monthly" ? 1200 : 100;
+     let razorpaySubscriptionId: string | null = null;
 
-        const razorpaySubscription =
-          await RazorpayService.createRazorpaySubscription({
-            planId: razorpayPlanId,
-            totalCount,
-            notes: {
-              organization_id: organizationId,
-              db_subscription_id: databaseSubscriptionId,
-              plan_id: planId,
-              billing_cycle: billingCycle,
-            },
-          });
+     try {
+       const totalCount = billingCycle === "monthly" ? 1200 : 100;
 
-        // Save Razorpay subscription ID.
-        const updatedRes = await client.query(
-          `UPDATE subscriptions
-         SET razorpay_subscription_id = $1,
-             status = 'pending',
-             updated_at = NOW()
-         WHERE id = $2
-         RETURNING
-           id,
-           organization_id,
-           plan_id,
-           billing_cycle,
-           status,
-           razorpay_subscription_id`,
-          [razorpaySubscription.id, databaseSubscriptionId],
-        );
+       const razorpaySubscription =
+         await RazorpayService.createRazorpaySubscription({
+           planId: razorpayPlanId,
+           totalCount,
+           notes: {
+             organization_id: organizationId,
+             db_subscription_id: databaseSubscriptionId,
+             plan_id: planId,
+             billing_cycle: billingCycle,
+           },
+         });
 
-        const subscription = updatedRes.rows[0];
+       razorpaySubscriptionId = razorpaySubscription.id;
 
-        if (!subscription) {
-          throw new Error("Failed to save Razorpay subscription details.");
-        }
+       const updatedRes = await client.query(
+         `UPDATE subscriptions
+     SET razorpay_subscription_id = $1,
+         status = 'pending',
+         updated_at = NOW()
+     WHERE id = $2
+     RETURNING
+       id,
+       organization_id,
+       plan_id,
+       billing_cycle,
+       status,
+       razorpay_subscription_id`,
+         [razorpaySubscriptionId, databaseSubscriptionId],
+       );
 
-        return {
-          message:
-            "Razorpay subscription created. Payment authorization required.",
-          subscription: {
-            id: subscription.id,
-            organizationId: subscription.organization_id,
-            planId: subscription.plan_id,
-            planName: plan.name,
-            billingCycle: subscription.billing_cycle,
-            amount: price,
-            status: subscription.status,
-            razorpaySubscriptionId: subscription.razorpay_subscription_id,
-            razorpayKeyId,
-          },
-        };
-      } catch (error) {
-        await client.query(
-          `UPDATE subscriptions
-         SET status = 'failed',
-             updated_at = NOW()
-         WHERE id = $1`,
-          [databaseSubscriptionId],
-        );
+       const subscription = updatedRes.rows[0];
 
-        throw error;
-      }
+       if (!subscription) {
+         throw new Error("Failed to save Razorpay subscription details.");
+       }
+
+       return {
+         message:
+           "Razorpay subscription created. Payment authorization required.",
+         subscription: {
+           id: subscription.id,
+           organizationId: subscription.organization_id,
+           planId: planId,
+           planName: plan.name,
+           billingCycle: subscription.billing_cycle,
+           amount: price,
+           status: subscription.status,
+           razorpaySubscriptionId: subscription.razorpay_subscription_id,
+           razorpayKeyId,
+         },
+       };
+     } catch (error) {
+       if (razorpaySubscriptionId) {
+         try {
+           await RazorpayService.cancelRazorpaySubscription(
+             razorpaySubscriptionId,
+             false,
+           );
+         } catch (cancellationError) {
+           console.error(
+             "Failed to cancel orphaned Razorpay subscription:",
+             cancellationError,
+           );
+         }
+       }
+
+       await client.query(
+         `UPDATE subscriptions
+     SET status = 'failed',
+         updated_at = NOW()
+     WHERE id = $1`,
+         [databaseSubscriptionId],
+       );
+
+       throw error;
+     }
     } finally {
       try {
         if (lockAcquired) {
