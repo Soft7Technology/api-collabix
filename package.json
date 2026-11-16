@@ -10,7 +10,9 @@
     "start": "node dist/index.js",
     "clean": "rimraf dist",
     "seed-admin": "tsx --env-file=.env src/db/scripts/seed-super-admin.ts",
+    "db:migrate": "tsx --env-file=.env src/db/scripts/run-migrations.ts",
     "lint": "eslint src"
+
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1095.0",

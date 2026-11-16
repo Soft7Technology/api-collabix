@@ -750,7 +750,7 @@ export class AuthController {
 
       const isValid = await RazorpayService.verifyRazorpayWebhookSignature(
         req.body,
-        signature
+        signature,
       );
 
       if (!isValid) {
@@ -762,26 +762,37 @@ export class AuthController {
         });
         return;
       }
+      const eventId = req.headers["x-razorpay-event-id"];
 
+      if (typeof eventId !== "string" || !eventId.trim()) {
+        return res.status(400).json({
+          error: { message: "Missing Razorpay event ID." },
+        });
+      }
       const payload = JSON.parse(req.body.toString("utf8"));
 
       console.log("Razorpay webhook:", payload.event);
 
-      await AuthService.handleRazorpayWebhook(payload);
+      await AuthService.handleRazorpayWebhook(payload, eventId);
 
       res.status(200).json({
         success: true,
       });
-    } catch (error: any) {
-      console.error("Razorpay webhook error:", error);
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid webhook JSON payload.",
+        });
+      }
 
-      res.status(500).json({
-        error: {
-          message: "Webhook processing failed.",
-          status: 500,
-        },
+      console.error("Razorpay webhook processing failed:", error);
+
+      return res.status(500).json({
+        success: false,
+        message: "Failed to process Razorpay webhook.",
       });
-    } 
+    }
   }
 
   /**
