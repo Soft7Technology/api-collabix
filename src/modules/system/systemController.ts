@@ -24,130 +24,164 @@ const defaultFromEmail = config.SMTP_FROM.includes("<")
   ? config.SMTP_FROM.split("<")[1].replace(/>/g, "").trim()
   : "no-reply@platform.io";
 
-let inMemorySmtpSettings: SmtpSettings = {
+const ensureSmtpSettingsTable = async () => {
+  await query(`
+    CREATE TABLE IF NOT EXISTS system_smtp_settings (
+      id VARCHAR PRIMARY KEY,
+      provider VARCHAR NOT NULL,
+      encryption VARCHAR NOT NULL,
+      host VARCHAR NOT NULL,
+      port INTEGER NOT NULL,
+      username VARCHAR NOT NULL,
+      password VARCHAR NOT NULL,
+      from_name VARCHAR NOT NULL,
+      from_email VARCHAR NOT NULL,
+      reply_to VARCHAR,
+      test_recipient VARCHAR,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+};
+
+const getDefaultSmtpSettings = () => ({
   provider: "Custom SMTP",
   encryption: config.SMTP_SECURE ? "SSL" : "TLS (Recommended)",
   host: config.SMTP_HOST || "smtp.sendgrid.net",
   port: Number(config.SMTP_PORT) || 587,
   username: config.SMTP_USER || "",
-  password: config.SMTP_PASS || "",
+  hasPassword: Boolean(config.SMTP_PASS),
   fromName: defaultFromName,
   fromEmail: defaultFromEmail,
   replyTo: defaultFromEmail,
   testRecipient: defaultFromEmail,
-};
+});
+
 
 export class SystemController {
   static async getSmtpSettings(req: Request, res: Response) {
-    const orgId = (req.user as any)?.organization_id || 'default';
+    const orgId = (req.user as any)?.organization_id || "default";
+
     try {
+      await ensureSmtpSettingsTable();
+
       const row = await queryOne<any>(
         "SELECT * FROM system_smtp_settings WHERE id = $1",
-        [orgId]
+        [orgId],
       );
-      if (row) {
-        return res.json({
-          provider: row.provider,
-          encryption: row.encryption,
-          host: row.host,
-          port: Number(row.port),
-          username: row.username,
-          password: row.password,
-          fromName: row.from_name,
-          fromEmail: row.from_email,
-          replyTo: row.reply_to || "",
-          testRecipient: row.test_recipient || "",
-        });
+
+      if (!row) {
+        return res.json(getDefaultSmtpSettings());
       }
+
+      return res.json({
+        provider: row.provider,
+        encryption: row.encryption,
+        host: row.host,
+        port: Number(row.port),
+        username: row.username,
+        hasPassword: Boolean(row.password),
+        fromName: row.from_name,
+        fromEmail: row.from_email,
+        replyTo: row.reply_to || "",
+        testRecipient: row.test_recipient || "",
+      });
     } catch (err) {
-      // Fall back to in-memory store if database table doesn't exist yet
+      console.error("Failed to retrieve SMTP settings:", err);
+
+      return res.status(500).json({
+        error: {
+          message: "Failed to retrieve SMTP settings.",
+          status: 500,
+        },
+      });
     }
-    return res.json(inMemorySmtpSettings);
   }
 
   static async updateSmtpSettings(req: Request, res: Response) {
-    const orgId = (req.user as any)?.organization_id || 'default';
-    const {
-      provider,
-      encryption,
-      host,
-      port,
-      username,
-      password,
-      fromName,
-      fromEmail,
-      replyTo,
-      testRecipient,
-    } = req.body;
-
-    inMemorySmtpSettings = {
-      provider,
-      encryption,
-      host,
-      port: Number(port),
-      username,
-      password,
-      fromName,
-      fromEmail,
-      replyTo: replyTo || "",
-      testRecipient: testRecipient || "",
-    };
+    const orgId = (req.user as any)?.organization_id || "default";
 
     try {
-      await query(
-        `CREATE TABLE IF NOT EXISTS system_smtp_settings (
-          id VARCHAR PRIMARY KEY,
-          provider VARCHAR NOT NULL,
-          encryption VARCHAR NOT NULL,
-          host VARCHAR NOT NULL,
-          port INTEGER NOT NULL,
-          username VARCHAR NOT NULL,
-          password VARCHAR NOT NULL,
-          from_name VARCHAR NOT NULL,
-          from_email VARCHAR NOT NULL,
-          reply_to VARCHAR,
-          test_recipient VARCHAR,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );`,
+      await ensureSmtpSettingsTable();
+
+      // Fetch the organization's existing configuration
+      const existing = await queryOne<any>(
+        "SELECT * FROM system_smtp_settings WHERE id = $1",
+        [orgId],
       );
+const body = req.body;
+      const defaults = {
+        ...getDefaultSmtpSettings(),
+        password: config.SMTP_PASS || "",
+      };
+
+      // Merge incoming fields with existing settings
+     const settings: SmtpSettings = {
+       provider: body.provider ?? existing?.provider ?? defaults.provider,
+       encryption:
+         body.encryption ?? existing?.encryption ?? defaults.encryption,
+       host: body.host ?? existing?.host ?? defaults.host,
+       port: Number(body.port ?? existing?.port ?? defaults.port),
+       username: body.username ?? existing?.username ?? defaults.username,
+       password: body.password || existing?.password || defaults.password,
+       fromName: body.fromName ?? existing?.from_name ?? defaults.fromName,
+       fromEmail: body.fromEmail ?? existing?.from_email ?? defaults.fromEmail,
+       replyTo: body.replyTo ?? existing?.reply_to ?? defaults.replyTo,
+       testRecipient:
+         body.testRecipient ??
+         existing?.test_recipient ??
+         defaults.testRecipient,
+     };
 
       await query(
-        `INSERT INTO system_smtp_settings (id, provider, encryption, host, port, username, password, from_name, from_email, reply_to, test_recipient, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)
-         ON CONFLICT (id) DO UPDATE SET
-          provider = EXCLUDED.provider,
-          encryption = EXCLUDED.encryption,
-          host = EXCLUDED.host,
-          port = EXCLUDED.port,
-          username = EXCLUDED.username,
-          password = EXCLUDED.password,
-          from_name = EXCLUDED.from_name,
-          from_email = EXCLUDED.from_email,
-          reply_to = EXCLUDED.reply_to,
-          test_recipient = EXCLUDED.test_recipient,
-          updated_at = CURRENT_TIMESTAMP`,
+        `INSERT INTO system_smtp_settings
+       (id, provider, encryption, host, port, username, password,
+        from_name, from_email, reply_to, test_recipient, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)
+       ON CONFLICT (id) DO UPDATE SET
+        provider = EXCLUDED.provider,
+        encryption = EXCLUDED.encryption,
+        host = EXCLUDED.host,
+        port = EXCLUDED.port,
+        username = EXCLUDED.username,
+        password = EXCLUDED.password,
+        from_name = EXCLUDED.from_name,
+        from_email = EXCLUDED.from_email,
+        reply_to = EXCLUDED.reply_to,
+        test_recipient = EXCLUDED.test_recipient,
+        updated_at = CURRENT_TIMESTAMP`,
         [
           orgId,
-          provider,
-          encryption,
-          host,
-          Number(port),
-          username,
-          password,
-          fromName,
-          fromEmail,
-          replyTo || "",
-          testRecipient || "",
+          settings.provider,
+          settings.encryption,
+          settings.host,
+          settings.port,
+          settings.username,
+          settings.password,
+          settings.fromName,
+          settings.fromEmail,
+          settings.replyTo,
+          settings.testRecipient,
         ],
       );
-    } catch (err) {
-      console.warn("Could not save SMTP settings to database, using memory state:", err);
-    }
 
-    return res.json({
-      message: "SMTP configuration updated successfully",
-      settings: inMemorySmtpSettings,
-    });
+      return res.json({
+        message: "SMTP configuration updated successfully",
+        settings: {
+          ...settings,
+          password: undefined,
+          hasPassword: Boolean(settings.password),
+        },
+      });
+    } catch (err) {
+      console.error("Failed to update SMTP settings:", err);
+
+      return res.status(500).json({
+        error: {
+          message: "Failed to save SMTP settings.",
+          status: 500,
+        },
+      });
+    }
   }
 
   static async testSmtpConnection(req: Request, res: Response) {
@@ -170,7 +204,8 @@ export class SystemController {
         host: host,
         port: Number(port),
         secure: secure,
-        auth: username && password ? { user: username, pass: password } : undefined,
+        auth:
+          username && password ? { user: username, pass: password } : undefined,
       });
 
       // Verify connection
@@ -213,18 +248,20 @@ export class SystemController {
   }
 
   static async deleteSmtpSettings(req: Request, res: Response) {
-    const orgId = (req.user as any)?.organization_id || 'default';
+    const orgId = (req.user as any)?.organization_id || "default";
+
     try {
-      await query(
-        "DELETE FROM system_smtp_settings WHERE id = $1",
-        [orgId]
-      );
+      await ensureSmtpSettingsTable();
+
+      await query("DELETE FROM system_smtp_settings WHERE id = $1", [orgId]);
+
       return res.json({
         message: "SMTP configuration reset to system defaults successfully",
-        settings: inMemorySmtpSettings,
+        settings: getDefaultSmtpSettings(),
       });
     } catch (err) {
-      console.error("❌ Failed to delete SMTP settings:", err);
+      console.error("Failed to delete SMTP settings:", err);
+
       return res.status(500).json({
         error: {
           message: "Failed to reset SMTP settings.",
@@ -235,11 +272,11 @@ export class SystemController {
   }
 
   static async getWhatsAppSettings(req: Request, res: Response) {
-    const orgId = (req.user as any)?.organization_id || 'default';
+    const orgId = (req.user as any)?.organization_id || "default";
     try {
       const row = await queryOne<any>(
         "SELECT * FROM system_whatsapp_settings WHERE id = $1",
-        [orgId]
+        [orgId],
       );
       if (row) {
         return res.json({
@@ -259,7 +296,7 @@ export class SystemController {
   }
 
   static async updateWhatsAppSettings(req: Request, res: Response) {
-    const orgId = (req.user as any)?.organization_id || 'default';
+    const orgId = (req.user as any)?.organization_id || "default";
     const { enabled, phoneNumber, apiKey } = req.body;
 
     try {
@@ -304,12 +341,11 @@ export class SystemController {
   }
 
   static async deleteWhatsAppSettings(req: Request, res: Response) {
-    const orgId = (req.user as any)?.organization_id || 'default';
+    const orgId = (req.user as any)?.organization_id || "default";
     try {
-      await query(
-        "DELETE FROM system_whatsapp_settings WHERE id = $1",
-        [orgId]
-      );
+      await query("DELETE FROM system_whatsapp_settings WHERE id = $1", [
+        orgId,
+      ]);
       return res.json({
         message: "WhatsApp configuration reset to defaults successfully",
         settings: {

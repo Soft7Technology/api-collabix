@@ -159,26 +159,72 @@ export const updateOrganizationSchema = z.object({
   }),
 });
 
+
+// SMTP validation schemas
+
+const smtpEncryptionSchema = z.enum([
+  "SSL",
+  "TLS (Recommended)",
+]);
+
+const smtpPortSchema = z
+  .number()
+  .int("SMTP port must be an integer")
+  .min(1, "SMTP port must be at least 1")
+  .max(65535, "SMTP port cannot exceed 65535");
+
+const smtpEmailSchema = z.string().email("Invalid email address");
+
+const smtpOptionalEmailSchema = z
+  .string()
+  .email("Invalid email address")
+  .or(z.literal(""))
+  .optional();
+
+const smtpSettingsFields = {
+  provider: z.string().trim().min(1, "Email provider is required"),
+  encryption: smtpEncryptionSchema,
+  host: z.string().trim().min(1, "SMTP host is required").max(255),
+  port: smtpPortSchema,
+  username: z.string().trim(),
+  fromName: z.string().trim().min(1, "From Name is required").max(100),
+  fromEmail: smtpEmailSchema,
+  replyTo: smtpOptionalEmailSchema,
+  testRecipient: smtpEmailSchema,
+};
+
 export const updateSmtpSchema = z.object({
-  body: z.object({
-    provider: z.string().min(1, "Email provider is required"),
-    encryption: z.string().min(1, "Encryption method is required"),
-    host: z.string().min(1, "SMTP host is required"),
-    port: z.number().int().positive("SMTP port must be a positive integer"),
-    username: z.string().min(1, "Username is required"),
-    password: z.string().min(1, "Password is required"),
-    fromName: z.string().min(1, "From Name is required"),
-    fromEmail: z.string().email("Valid From Email is required"),
-    replyTo: z.string().optional().default(""),
-    testRecipient: z.string().optional().default(""),
-  }),
+  body: z
+    .object({
+      ...smtpSettingsFields,
+      password: z.string().max(1024, "Password is too long").optional(),
+    })
+    .partial()
+    .refine(
+      (data) => Object.keys(data).length > 0,
+      "At least one field must be provided",
+    ),
 });
 
 export const testSmtpSchema = z.object({
   body: z.object({
-    testRecipient: z.string().email("Valid test recipient email is required"),
-  }),
+    host: smtpSettingsFields.host,
+    port: smtpPortSchema,
+    encryption: smtpEncryptionSchema,
+    username: z.string().trim(),
+    password: z.string().max(1024).optional(),
+    fromName: smtpSettingsFields.fromName,
+    fromEmail: smtpEmailSchema,
+    testRecipient: smtpEmailSchema,
+  }).refine(
+    (data) => Boolean(data.username) === Boolean(data.password),
+    {
+      message: "Both SMTP username and password must be provided for authentication",
+      path: ["password"],
+    },
+  ),
 });
+
 
 export const updateWhatsAppSchema = z.object({
   body: z.object({
