@@ -85,99 +85,122 @@ app.get("/api/health", (req, res) => {
 app.use("/auth", authRouter);
 
 // Middleware to enforce active SaaS subscriptions or active trial periods
+
 async function checkSubscription(
   req: express.Request,
   res: express.Response,
   next: express.NextFunction,
 ) {
-  const user = req.user;
-  if (!user || user.is_super_admin) {
-    return next();
-  }
+  try {
+    const user = req.user;
 
-  // Allow read-only GET access to view existing projects, tasks, and reports
-  if (req.method === "GET") {
-    return next();
-  }
+    if (!user || user.is_super_admin) {
+      return next();
+    }
 
-  const { subscription_status, trial_ends_at, is_approved } = user.organization || {};
-  const status = (subscription_status || "").toLowerCase();
-  const organizationId = user.organization?.id
-  console.log("organizationId", organizationId)
-  console.log("STATUS",status)
+    const organization = user.organization;
 
+    if (!organization) {
+      return res.status(403).json({
+        error: {
+          message: "Organization access is required.",
+          code: "ORGANIZATION_REQUIRED",
+          status: 403,
+        },
+      });
+    }
 
-  // Block immediately if expired or revoked (and not approved)
-  if ((status === "expired" || status === "revoked") && !is_approved) {
-    res.status(402).json({
-      error: {
-        message: "Your subscription has expired or was revoked. Subscription required to restore access.",
-        code: "SUBSCRIPTION_EXPIRED",
-        status: 402,
-      },
-    });
-    return;
-  }
+    const {
+      id: organizationId,
+      subscription_status,
+      trial_ends_at,
+      is_approved,
+    } = organization;
 
-  if (status === "active" || is_approved) {
-    if (organizationId) {
+    const status = (subscription_status || "").toLowerCase();
+
+    // Revoked organizations cannot access any API endpoint.
+    if (status === "revoked") {
+      return res.status(403).json({
+        error: {
+          message: "Your organization access has been revoked.",
+          code: "ORGANIZATION_REVOKED",
+          status: 403,
+        },
+      });
+    }
+
+    // Ordinary GET requests are read-only.
+    // GitHub OAuth callback is also a GET, but must remain accessible
+    // because it completes the OAuth integration.
+    if (req.method === "GET") {
+      return next();
+    }
+
+    const now = new Date();
+
+    const isValidFutureDate = (value: unknown): boolean => {
+      if (!value) return false;
+
+      const date = new Date(value as string | number | Date);
+
+      return !isNaN(date.getTime()) && date > now;
+    };
+
+    // 1. Check trial access.
+    if (status === "trial" || status === "trialing") {
+      if (isValidFutureDate(trial_ends_at)) {
+        return next();
+      }
+    }
+
+    // 2. Check paid subscription independently of approval.
+    if (status === "active") {
       const { rows } = await db.query(
-        `SELECT status, current_period_end, cancel_at_period_end
-         FROM subscriptions
-         WHERE organization_id = $1
-           AND status = 'active'
-         ORDER BY created_at DESC
-         LIMIT 1`,
+        `SELECT current_period_end
+     FROM subscriptions
+     WHERE organization_id = $1
+       AND status = 'active'
+     ORDER BY created_at DESC
+     LIMIT 1`,
         [organizationId],
       );
 
       const subscription = rows[0];
 
-      if (subscription) {
-        const periodEnded =
-          subscription.current_period_end &&
-          new Date() >= new Date(subscription.current_period_end);
-
-        if (subscription.cancel_at_period_end && periodEnded) {
-          return res.status(402).json({
-            error: {
-              message: "Your subscription has expired.",
-              code: "SUBSCRIPTION_EXPIRED",
-              status: 402,
-            },
-          });
-        }
+      if (subscription && isValidFutureDate(subscription.current_period_end)) {
+        return next();
       }
     }
 
-    return next();
-  }
-
-  // Trial period check
-  if (
-    status === "trial" ||
-    status === "trialing" ||
-    !subscription_status
-  ) {
-    const trialEnd = trial_ends_at ? new Date(trial_ends_at) : null;
-
-    if (
-      !trialEnd ||
-      isNaN(trialEnd.getTime()) ||
-      new Date() < trialEnd
-    ) {
-      return next();
+    // 3. Check temporary Super Admin approval.
+    if (is_approved && status === "active") {
+      if (isValidFutureDate(trial_ends_at)) {
+        return next();
+      }
     }
-  }
 
-  res.status(402).json({
-    error: {
-      message: "Subscription Required: Free trial has ended. Please subscribe to restore access.",
-      code: "SUBSCRIPTION_EXPIRED",
-      status: 402,
-    },
-  });
+    return res.status(402).json({
+      error: {
+        message:
+          "Your subscription or trial period has expired. Please subscribe to restore write access.",
+        code: "SUBSCRIPTION_EXPIRED",
+        status: 402,
+      },
+    });
+  } catch (error) {
+    console.error("Subscription middleware error:", error);
+
+    return res.status(500).json({
+      error: {
+        message: "Unable to verify subscription access.",
+        code: "SUBSCRIPTION_VERIFICATION_FAILED",
+        status: 500,
+      },
+    });
+  }
 }
+
 
 // Middleware to block non-superadmins during system maintenance mode
 async function checkMaintenanceMode(
