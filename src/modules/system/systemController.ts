@@ -108,29 +108,29 @@ export class SystemController {
         "SELECT * FROM system_smtp_settings WHERE id = $1",
         [orgId],
       );
-const body = req.body;
+      const body = req.body;
       const defaults = {
         ...getDefaultSmtpSettings(),
         password: config.SMTP_PASS || "",
       };
 
       // Merge incoming fields with existing settings
-     const settings: SmtpSettings = {
-       provider: body.provider ?? existing?.provider ?? defaults.provider,
-       encryption:
-         body.encryption ?? existing?.encryption ?? defaults.encryption,
-       host: body.host ?? existing?.host ?? defaults.host,
-       port: Number(body.port ?? existing?.port ?? defaults.port),
-       username: body.username ?? existing?.username ?? defaults.username,
-       password: body.password || existing?.password || defaults.password,
-       fromName: body.fromName ?? existing?.from_name ?? defaults.fromName,
-       fromEmail: body.fromEmail ?? existing?.from_email ?? defaults.fromEmail,
-       replyTo: body.replyTo ?? existing?.reply_to ?? defaults.replyTo,
-       testRecipient:
-         body.testRecipient ??
-         existing?.test_recipient ??
-         defaults.testRecipient,
-     };
+      const settings: SmtpSettings = {
+        provider: body.provider ?? existing?.provider ?? defaults.provider,
+        encryption:
+          body.encryption ?? existing?.encryption ?? defaults.encryption,
+        host: body.host ?? existing?.host ?? defaults.host,
+        port: Number(body.port ?? existing?.port ?? defaults.port),
+        username: body.username ?? existing?.username ?? defaults.username,
+        password: body.password || existing?.password || defaults.password,
+        fromName: body.fromName ?? existing?.from_name ?? defaults.fromName,
+        fromEmail: body.fromEmail ?? existing?.from_email ?? defaults.fromEmail,
+        replyTo: body.replyTo ?? existing?.reply_to ?? defaults.replyTo,
+        testRecipient:
+          body.testRecipient ??
+          existing?.test_recipient ??
+          defaults.testRecipient,
+      };
 
       await query(
         `INSERT INTO system_smtp_settings
@@ -273,26 +273,38 @@ const body = req.body;
 
   static async getWhatsAppSettings(req: Request, res: Response) {
     const orgId = (req.user as any)?.organization_id || "default";
+
     try {
+      await query(`
+      CREATE TABLE IF NOT EXISTS system_whatsapp_settings (
+        id VARCHAR PRIMARY KEY,
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        phone_number VARCHAR,
+        api_key VARCHAR,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
       const row = await queryOne<any>(
         "SELECT * FROM system_whatsapp_settings WHERE id = $1",
         [orgId],
       );
-      if (row) {
-        return res.json({
-          enabled: !!row.enabled,
-          phoneNumber: row.phone_number || "",
-          apiKey: row.api_key || "",
-        });
-      }
+
+      return res.json({
+        enabled: row ? Boolean(row.enabled) : false,
+        phoneNumber: row?.phone_number || "",
+        hasApiKey: Boolean(row?.api_key),
+      });
     } catch (err) {
-      // Table doesn't exist or query failed, return defaults
+      console.error("Failed to retrieve WhatsApp settings:", err);
+
+      return res.status(500).json({
+        error: {
+          message: "Failed to retrieve WhatsApp settings.",
+          status: 500,
+        },
+      });
     }
-    return res.json({
-      enabled: false,
-      phoneNumber: "",
-      apiKey: "",
-    });
   }
 
   static async updateWhatsAppSettings(req: Request, res: Response) {
@@ -300,40 +312,57 @@ const body = req.body;
     const { enabled, phoneNumber, apiKey } = req.body;
 
     try {
-      await query(
-        `CREATE TABLE IF NOT EXISTS system_whatsapp_settings (
-          id VARCHAR PRIMARY KEY,
-          enabled BOOLEAN NOT NULL DEFAULT FALSE,
-          phone_number VARCHAR,
-          api_key VARCHAR,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );`,
+      await query(`
+      CREATE TABLE IF NOT EXISTS system_whatsapp_settings (
+        id VARCHAR PRIMARY KEY,
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        phone_number VARCHAR,
+        api_key VARCHAR,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+
+      const existing = await queryOne<any>(
+        "SELECT * FROM system_whatsapp_settings WHERE id = $1",
+        [orgId],
+      );
+      const enabledToSave = enabled ?? existing?.enabled ?? false;
+      // Only replace the API key when a new non-empty key is provided.
+      const apiKeyToSave =
+        typeof apiKey === "string" && apiKey.trim().length > 0
+          ? apiKey
+          : existing?.api_key || "";
+
+      // Preserve phone number when the field is omitted.
+      const phoneNumberToSave =
+        phoneNumber !== undefined ? phoneNumber : existing?.phone_number || "";
 
       await query(
-        `INSERT INTO system_whatsapp_settings (id, enabled, phone_number, api_key, updated_at)
-         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-         ON CONFLICT (id) DO UPDATE SET
-          enabled = EXCLUDED.enabled,
-          phone_number = EXCLUDED.phone_number,
-          api_key = EXCLUDED.api_key,
-          updated_at = CURRENT_TIMESTAMP`,
-        [orgId, !!enabled, phoneNumber || "", apiKey || ""],
+        `INSERT INTO system_whatsapp_settings
+        (id, enabled, phone_number, api_key, updated_at)
+       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+       ON CONFLICT (id) DO UPDATE SET
+        enabled = EXCLUDED.enabled,
+        phone_number = EXCLUDED.phone_number,
+        api_key = EXCLUDED.api_key,
+        updated_at = CURRENT_TIMESTAMP`,
+        [orgId, enabledToSave, phoneNumberToSave, apiKeyToSave],
       );
 
       return res.json({
         message: "WhatsApp configuration saved successfully",
         settings: {
-          enabled: !!enabled,
-          phoneNumber: phoneNumber || "",
-          apiKey: apiKey || "",
+          enabled: enabledToSave,
+          phoneNumber: phoneNumberToSave,
+          hasApiKey: Boolean(apiKeyToSave),
         },
       });
-    } catch (err: any) {
-      console.error("❌ Failed to update WhatsApp settings:", err);
+    } catch (err) {
+      console.error("Failed to update WhatsApp settings:", err);
+
       return res.status(500).json({
         error: {
-          message: `Failed to save WhatsApp settings: ${err.message || "Unknown error"}`,
+          message: "Failed to save WhatsApp settings.",
           status: 500,
         },
       });
@@ -342,20 +371,23 @@ const body = req.body;
 
   static async deleteWhatsAppSettings(req: Request, res: Response) {
     const orgId = (req.user as any)?.organization_id || "default";
+
     try {
       await query("DELETE FROM system_whatsapp_settings WHERE id = $1", [
         orgId,
       ]);
+
       return res.json({
-        message: "WhatsApp configuration reset to defaults successfully",
+        message: "WhatsApp configuration reset successfully",
         settings: {
           enabled: false,
           phoneNumber: "",
-          apiKey: "",
+          hasApiKey: false,
         },
       });
-    } catch (err: any) {
-      console.error("❌ Failed to delete WhatsApp settings:", err);
+    } catch (err) {
+      console.error("Failed to delete WhatsApp settings:", err);
+
       return res.status(500).json({
         error: {
           message: "Failed to reset WhatsApp settings.",

@@ -226,13 +226,20 @@ export const testSmtpSchema = z.object({
 });
 
 
+
 export const updateWhatsAppSchema = z.object({
-  body: z.object({
-    enabled: z.boolean(),
-    phoneNumber: z.string().optional().default(""),
-    apiKey: z.string().optional().default(""),
-  }),
+  body: z
+    .object({
+      enabled: z.boolean().optional(),
+      phoneNumber: z.string().optional(),
+      apiKey: z.string().max(1024).optional(),
+    })
+    .refine(
+      (data) => Object.keys(data).length > 0,
+      "At least one field must be provided",
+    ),
 });
+
 
 // Repository and Git Schemas
 export const createRepositorySchema = z.object({
