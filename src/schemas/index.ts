@@ -445,7 +445,55 @@ export const reviewWorkReportSchema = z.object({
     comment: z.string().optional().default(""),
   }),
 });
+// Monitoring validation schemas
 
+const validDateString = z.string().refine(
+  (value) => !Number.isNaN(Date.parse(value)),
+  "Invalid date",
+);
+
+export const startMonitoringSessionSchema = z.object({
+  body: z.object({
+    device_uuid: z.string().max(255).optional(),
+  }),
+});
+
+export const stopMonitoringSessionSchema = z.object({
+  body: z.object({
+    session_id: z.string().min(1, "Session ID is required"),
+  }),
+});
+
+export const heartbeatMonitoringSessionSchema = z.object({
+  body: z.object({
+    session_id: z.string().min(1, "Session ID is required"),
+    active_app: z.string().max(255).optional(),
+    active_domain: z.string().max(255).optional(),
+    window_title: z.string().max(1000).optional(),
+  }),
+});
+
+export const getMonitoringScreenshotsSchema = z.object({
+  query: z.object({
+    startDate: validDateString.optional(),
+    endDate: validDateString.optional(),
+    userId: z.string().min(1).optional(),
+    limit: z.string().regex(/^[1-9]\d{0,4}$/, "Invalid limit").optional(),
+  }),
+});
+
+export const deleteMonitoringScreenshotSchema = z.object({
+  params: z.object({
+    id: z.string().min(1, "Screenshot ID is required"),
+  }),
+});
+
+export const uploadMonitoringScreenshotSchema = z.object({
+  body: z.object({
+    status: z.enum(["active", "inactive", "idle"]).optional(),
+    captured_at: validDateString.optional(),
+  }),
+});
 
 
 

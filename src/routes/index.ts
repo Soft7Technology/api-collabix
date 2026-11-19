@@ -36,6 +36,12 @@ import {
   createWorkReportSchema,
   updateWorkReportSchema,
   reviewWorkReportSchema,
+  startMonitoringSessionSchema,
+  stopMonitoringSessionSchema,
+  heartbeatMonitoringSessionSchema,
+  getMonitoringScreenshotsSchema,
+  deleteMonitoringScreenshotSchema,
+  uploadMonitoringScreenshotSchema,
 } from "../schemas/index.js";
 import { RepositoryController } from "../modules/system/repositoryController.js";
 import { GithubController } from "../modules/system/githubController.js";
@@ -257,15 +263,43 @@ router.get("/upload/file/*", UploadController.streamFile);
 router.post(
   "/monitoring/upload",
   upload.single("screenshot"),
+  validate(uploadMonitoringScreenshotSchema),
   MonitoringController.uploadScreenshot,
 );
+
 router.post("/monitoring/start", MonitoringController.startMonitoring);
 router.post("/monitoring/stop", MonitoringController.stopMonitoring);
-router.post("/monitoring/session/start", MonitoringController.startSession);
-router.post("/monitoring/session/stop", MonitoringController.stopSession);
-router.post("/monitoring/session/heartbeat", MonitoringController.heartbeatSession);
-router.get("/monitoring/screenshots", MonitoringController.getScreenshots);
-router.delete("/monitoring/screenshots/:id", MonitoringController.deleteScreenshot);
+
+router.post(
+  "/monitoring/session/start",
+  validate(startMonitoringSessionSchema),
+  MonitoringController.startSession,
+);
+
+router.post(
+  "/monitoring/session/stop",
+  validate(stopMonitoringSessionSchema),
+  MonitoringController.stopSession,
+);
+
+router.post(
+  "/monitoring/session/heartbeat",
+  validate(heartbeatMonitoringSessionSchema),
+  MonitoringController.heartbeatSession,
+);
+
+router.get(
+  "/monitoring/screenshots",
+  validate(getMonitoringScreenshotsSchema),
+  MonitoringController.getScreenshots,
+);
+
+router.delete(
+  "/monitoring/screenshots/:id",
+  validate(deleteMonitoringScreenshotSchema),
+  MonitoringController.deleteScreenshot,
+);
+
 router.post("/monitoring/lunch/start", MonitoringController.startLunch);
 router.post("/monitoring/lunch/stop", MonitoringController.stopLunch);
 
