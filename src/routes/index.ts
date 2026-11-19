@@ -42,6 +42,10 @@ import {
   getMonitoringScreenshotsSchema,
   deleteMonitoringScreenshotSchema,
   uploadMonitoringScreenshotSchema,
+  getLeavesSchema,
+  createLeaveSchema,
+  updateLeaveStatusSchema,
+  deleteLeaveSchema,
 } from "../schemas/index.js";
 import { RepositoryController } from "../modules/system/repositoryController.js";
 import { GithubController } from "../modules/system/githubController.js";
@@ -221,10 +225,22 @@ router.post("/meetings/:id/messages", MeetingController.sendMessage);
 router.get("/team/meetings/:id/messages", MeetingController.getMessages);
 router.post("/team/meetings/:id/messages", MeetingController.sendMessage);
 
-router.get("/leaves", DashboardController.getLeaves);
-router.post("/leaves", DashboardController.createLeave);
-router.patch("/leaves/:id/status", DashboardController.updateLeaveStatus);
-router.delete("/leaves/:id", DashboardController.deleteLeave);
+router.get("/leaves", validate(getLeavesSchema), DashboardController.getLeaves);
+router.post(
+  "/leaves",
+  validate(createLeaveSchema),
+  DashboardController.createLeave,
+);
+router.patch(
+  "/leaves/:id/status",
+  validate(updateLeaveStatusSchema),
+  DashboardController.updateLeaveStatus,
+);
+router.delete(
+  "/leaves/:id",
+  validate(deleteLeaveSchema),
+  DashboardController.deleteLeave,
+);
 
 router.get("/activity", DashboardController.getActivity);
 

@@ -494,6 +494,50 @@ export const uploadMonitoringScreenshotSchema = z.object({
     captured_at: validDateString.optional(),
   }),
 });
+// Leave validation schemas
 
+const leaveDateSchema = z.string().min(1, "Date is required").refine(
+  (value) => !Number.isNaN(Date.parse(value)),
+  "Invalid date",
+);
 
+export const getLeavesSchema = z.object({
+  query: z.object({
+    memberId: z.string().min(1).optional(),
+  }),
+});
+
+export const createLeaveSchema = z.object({
+  body: z.object({
+    memberId: z.string().min(1, "Member ID is required"),
+    type: z.string().trim().min(1, "Leave type is required").max(100),
+    startDate: leaveDateSchema,
+    endDate: leaveDateSchema,
+    reason: z.string().max(2000).optional(),
+    attachmentUrl: z.string().max(2048).optional(),
+    attachmentName: z.string().max(255).optional(),
+  }).refine(
+    (data) => Date.parse(data.endDate) >= Date.parse(data.startDate),
+    {
+      message: "End date must be on or after start date",
+      path: ["endDate"],
+    },
+  ),
+});
+
+export const updateLeaveStatusSchema = z.object({
+  params: z.object({
+    id: z.string().min(1, "Leave ID is required"),
+  }),
+  body: z.object({
+    status: z.enum(["APPROVED", "REJECTED"]),
+  }),
+});
+
+export const deleteLeaveSchema = z.object({
+  params: z.object({
+    id: z.string().min(1, "Leave ID is required"),
+  }),
+});
+// Leave validation schemas
 
