@@ -7,6 +7,8 @@ import {
   generateAccessToken,
   comparePassword,
   hashPassword,
+  REFRESH_TOKEN_TTL_MS,
+  getRefreshTokenExpiresAt,
 } from "../../utils/auth.js";
 import { db } from "../../db/index.js";
 import { config } from "../../config/index.js";
@@ -19,9 +21,8 @@ const cookieOptions = {
   path: "/",
   domain: config.COOKIE_DOMAIN || undefined,
 };
-
-const ACCESS_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days persistent session
-const REFRESH_COOKIE_MAX_AGE = 60 * 24 * 60 * 60 * 1000; // 60 days persistent session
+const ACCESS_COOKIE_MAX_AGE = 4 * 60 * 60 * 1000;
+const REFRESH_COOKIE_MAX_AGE = REFRESH_TOKEN_TTL_MS;
 
 export class AuthController {
   /**
@@ -145,8 +146,7 @@ export class AuthController {
       // Generate Refresh Token
       const rawRefreshToken = crypto.randomBytes(40).toString("hex");
       const rfHash = hashToken(rawRefreshToken);
-      const rfExpires = new Date();
-      rfExpires.setDate(rfExpires.getDate() + 30);
+      const rfExpires = getRefreshTokenExpiresAt();
 
       // Save refresh token in DB
       await db.query(
@@ -226,8 +226,7 @@ export class AuthController {
       // Generate Refresh Token
       const rawRefreshToken = crypto.randomBytes(40).toString("hex");
       const rfHash = hashToken(rawRefreshToken);
-      const rfExpires = new Date();
-      rfExpires.setDate(rfExpires.getDate() + 30);
+      const rfExpires = getRefreshTokenExpiresAt();
 
       // Save refresh token in DB
       await db.query(

@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { db } from "../db/index.js";
 import { hashToken } from "./authService.js";
-import { hashPassword } from "../utils/auth.js";
+import { hashPassword, getRefreshTokenExpiresAt } from "../utils/auth.js";
 
 let maintenanceModeCache: { active: boolean; timestamp: number } | null = null;
 const CACHE_TTL_MS = 5000; // 5 seconds cache to eliminate DB contention
@@ -432,8 +432,7 @@ export class SuperService {
     const targetUser = rows[0];
     const rawRefreshToken = crypto.randomBytes(40).toString("hex");
     const rfHash = hashToken(rawRefreshToken);
-    const rfExpires = new Date();
-    rfExpires.setDate(rfExpires.getDate() + 30);
+     const rfExpires = getRefreshTokenExpiresAt();
 
     await db.query(
       "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3);",

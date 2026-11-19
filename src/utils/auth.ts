@@ -63,3 +63,9 @@ export function verifyRefreshToken(token: string): any {
     return null;
   }
 }
+export const REFRESH_TOKEN_TTL_MS =
+  config.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000;
+
+export function getRefreshTokenExpiresAt(): Date {
+  return new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+}

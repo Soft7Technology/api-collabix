@@ -20,6 +20,7 @@ const envSchema = z
       .string()
       .min(32)
       .default("dev_access_secret_key_at_least_32_chars_long_12345"),
+    REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
     JWT_REFRESH_SECRET: z
       .string()
       .min(32)
@@ -51,9 +52,7 @@ const envSchema = z
       .default(true),
     SMTP_LEAVE_USER: z.string().default("Soft7.in@gmail.com"),
     SMTP_LEAVE_PASS: z.string().optional(),
-    SMTP_LEAVE_FROM: z
-      .string()
-      .default("SOFT7 HR <Soft7.in@gmail.com>"),
+    SMTP_LEAVE_FROM: z.string().default("SOFT7 HR <Soft7.in@gmail.com>"),
     COOKIE_DOMAIN: z.string().optional(),
     GITHUB_CLIENT_ID: z.string().optional().default(""),
     GITHUB_CLIENT_SECRET: z.string().optional().default(""),

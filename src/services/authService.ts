@@ -1,7 +1,11 @@
 import crypto from "crypto";
 import "dotenv/config";
 import { pool, db } from "../db/index.js";
-import { comparePassword, hashPassword } from "../utils/auth.js";
+import {
+  comparePassword,
+  hashPassword,
+  getRefreshTokenExpiresAt,
+} from "../utils/auth.js";
 import { config } from "../config/index.js";
 import { emailService } from "./emailService.js";
 import { RazorpayService } from "./razorpayService.js";
@@ -322,8 +326,7 @@ export class AuthService {
 
       const newRawRt = crypto.randomBytes(40).toString("hex");
       const newRtHash = hashToken(newRawRt);
-      const newRtExpires = new Date();
-      newRtExpires.setDate(newRtExpires.getDate() + 30);
+      const newRtExpires = getRefreshTokenExpiresAt();
 
       await client.query(
         `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
