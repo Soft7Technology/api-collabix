@@ -153,6 +153,33 @@ export class DashboardController {
         leaveData,
         req.user?.organization_id || null,
       );
+      if (leave && req.user?.organization_id) {
+        const recipients = await LeaveService.getLeaveRequestRecipients(
+          leave.memberId,
+          req.user.organization_id,
+        );
+
+        const emailResults = await Promise.allSettled(
+          recipients.map((recipient) =>
+            emailService.sendLeaveRequestEmail(
+              recipient.email,
+              recipient.employee_name,
+              leave.type,
+              leave.startDate,
+              leave.endDate,
+            ),
+          ),
+        );
+
+        emailResults.forEach((result, index) => {
+          if (result.status === "rejected") {
+            console.error(
+              `Failed to notify ${recipients[index].email}:`,
+              result.reason,
+            );
+          }
+        });
+      }
       if (req.user && leave) {
         await DashboardService.logActivity(
           req.user.id,

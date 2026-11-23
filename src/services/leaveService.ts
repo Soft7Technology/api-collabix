@@ -103,7 +103,40 @@ export class LeaveService {
       attachmentName: created.attachment_name,
     };
   }
+  static async getLeaveRequestRecipients(
+    memberId: string,
+    organizationId: string,
+  ) {
+    const { rows } = await db.query(
+      `
+    SELECT DISTINCT
+      recipient.id,
+      recipient.name,
+      recipient.email,
+      recipient_role.name AS role_name,
+      employee.name AS employee_name
+    FROM users employee
+    INNER JOIN users recipient
+      ON recipient.organization_id = employee.organization_id
+    INNER JOIN roles recipient_role
+      ON recipient_role.id = recipient.role_id
+    WHERE employee.id = $1
+      AND employee.organization_id = $2
+      AND employee.status = 'ACTIVE'
+      AND recipient.status = 'ACTIVE'
+      AND recipient.is_super_admin = false
+      AND recipient.email IS NOT NULL
+      AND TRIM(recipient.email) <> ''
+      AND (
+        recipient_role.name = 'Admin'
+        OR recipient.id = employee.manager_id
+      )
+    `,
+      [memberId, organizationId],
+    );
 
+    return rows;
+  }
   static async updateStatus(
     id: string,
     status: "APPROVED" | "REJECTED",

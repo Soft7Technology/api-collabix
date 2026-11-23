@@ -5,7 +5,20 @@ import { queryOne } from "../db/index.js";
 export interface EmailProvider {
   sendInvitationEmail(email: string, invitationUrl: string): Promise<void>;
   sendPasswordResetEmail(email: string, resetUrl: string): Promise<void>;
-  sendLeaveStatusEmail(email: string, leaveType: string, startDate: string, endDate: string, status: string): Promise<void>;
+  sendLeaveStatusEmail(
+    email: string,
+    leaveType: string,
+    startDate: string,
+    endDate: string,
+    status: string,
+  ): Promise<void>;
+  sendLeaveRequestEmail(
+    email: string,
+    employeeName: string,
+    leaveType: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<void>;
 }
 
 class ConsoleEmailProvider implements EmailProvider {
@@ -49,11 +62,26 @@ class ConsoleEmailProvider implements EmailProvider {
     console.info(
       `--------------------------------------------------------------------------------`,
     );
-    console.info(`✉️  [Console Email] Leave Request for ${leaveType} (${startDate} to ${endDate}) is ${status}`);
+    console.info(
+      `✉️  [Console Email] Leave Request for ${leaveType} (${startDate} to ${endDate}) is ${status}`,
+    );
     console.info(
       `--------------------------------------------------------------------------------`,
     );
     console.info(`✅ Leave status email logged for ${email}\n`);
+  }
+
+  async sendLeaveRequestEmail(
+    email: string,
+    employeeName: string,
+    leaveType: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<void> {
+    console.info(`\n📧 New leave request notification to ${email}`);
+    console.info(
+      `Employee: ${employeeName} | Type: ${leaveType} | Dates: ${startDate} to ${endDate}`,
+    );
   }
 }
 
@@ -119,7 +147,8 @@ class SmtpEmailProvider implements EmailProvider {
     invitationUrl: string,
   ): Promise<void> {
     try {
-      const { transporter, from, fromName } = await getDynamicTransporter(email);
+      const { transporter, from, fromName } =
+        await getDynamicTransporter(email);
       await transporter.sendMail({
         from: from,
         to: email,
@@ -143,7 +172,8 @@ class SmtpEmailProvider implements EmailProvider {
 
   async sendPasswordResetEmail(email: string, resetUrl: string): Promise<void> {
     try {
-      const { transporter, from, fromName } = await getDynamicTransporter(email);
+      const { transporter, from, fromName } =
+        await getDynamicTransporter(email);
       await transporter.sendMail({
         from: from,
         to: email,
@@ -173,7 +203,8 @@ class SmtpEmailProvider implements EmailProvider {
     status: string,
   ): Promise<void> {
     try {
-      const { transporter, from, fromName } = await getDynamicTransporter(email);
+      const { transporter, from, fromName } =
+        await getDynamicTransporter(email);
       const isApproved = status === "APPROVED";
       const statusLabel = isApproved ? "Approved" : "Rejected";
       await transporter.sendMail({
@@ -206,6 +237,43 @@ class SmtpEmailProvider implements EmailProvider {
       console.log(`✅  Leave status email sent via SMTP to ${email}`);
     } catch (error) {
       console.error("❌  Failed to send leave status email via SMTP:", error);
+      throw error;
+    }
+  }
+  async sendLeaveRequestEmail(
+    email: string,
+    employeeName: string,
+    leaveType: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<void> {
+    try {
+      const { transporter, from, fromName } =
+        await getDynamicTransporter(email);
+
+      await transporter.sendMail({
+        from,
+        to: email,
+        subject: `New Leave Request — ${fromName}`,
+        html: `
+        <div style="font-family: sans-serif; padding: 20px; line-height: 1.6; color: #111;">
+          <h2>New Leave Request</h2>
+          <p>${employeeName} has submitted a leave request.</p>
+          <p><strong>Leave Type:</strong> ${leaveType}</p>
+          <p><strong>Start Date:</strong> ${startDate}</p>
+          <p><strong>End Date:</strong> ${endDate}</p>
+          <p>Please log in to Collabix to review this request.</p>
+          <p>${fromName} Team</p>
+        </div>
+      `,
+      });
+
+      console.log(`✅ Leave request email sent to ${email}`);
+    } catch (error) {
+      console.error(
+        `❌ Failed to send leave request email to ${email}:`,
+        error,
+      );
       throw error;
     }
   }
