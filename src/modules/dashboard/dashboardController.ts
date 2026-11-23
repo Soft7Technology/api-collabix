@@ -5,6 +5,7 @@ import { MeetingService } from "../../services/meetingService.js";
 import { SprintService } from "../../services/sprintService.js";
 import { MemberService } from "../../services/memberService.js";
 import { emailService } from "../../services/emailService.js";
+import { sendLeaveNotificationToManager } from "../../utils/mailer.js";
 
 export class DashboardController {
   static async getSprints(req: Request, res: Response, next: NextFunction) {
@@ -129,7 +130,7 @@ export class DashboardController {
     }
   }
 
-  static async createLeave(req: Request, res: Response, next: NextFunction) {
+ static async createLeave(req: Request, res: Response, next: NextFunction) {
     try {
       const userCtx = req.user;
       const leaveData = req.body;
@@ -187,6 +188,38 @@ export class DashboardController {
           `${leave.type} leave`,
         );
       }
+
+      if (leave) {
+        const applicant =
+          (await MemberService.getById(
+            leave.memberId,
+            req.user?.organization_id || null,
+            userCtx
+              ? {
+                  id: userCtx.id,
+                  roleName: userCtx.role_name || "Teammates",
+                  roleRank: userCtx.role_rank || 4,
+                  departmentId: userCtx.department_id || null,
+                  organizationId: userCtx.organization_id || null,
+                  isSuperAdmin: userCtx.is_super_admin || false,
+                }
+              : undefined,
+          )) || req.user;
+
+        sendLeaveNotificationToManager({
+          applicantName: applicant?.name || "Workspace Member",
+          applicantEmail: applicant?.email || "",
+          leaveType: leave.type,
+          startDate: leave.startDate,
+          endDate: leave.endDate,
+          reason: leave.reason || leaveData.reason,
+          attachmentUrl: leave.attachmentUrl || leaveData.attachmentUrl,
+          attachmentName: leave.attachmentName || leaveData.attachmentName,
+        }).catch((err) => {
+          console.error("Failed to send leave notification email to manager:", err);
+        });
+      }
+
       res.status(201).json(leave);
     } catch (error) {
       next(error);

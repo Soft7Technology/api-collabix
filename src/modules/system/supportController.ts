@@ -137,4 +137,35 @@ export class SupportController {
       res.status(400).json({ error: { message: error.message || "Failed to post reply", status: 400 } });
     }
   }
+
+  /**
+   * Escalates a tenant support ticket to the Super Admin (admin-only action).
+   */
+  static async escalateTenantTicket(req: Request, res: Response, next: NextFunction) {
+    try {
+      const orgId = (req.user as any)?.organization_id;
+      const { id } = req.params;
+
+      // Verify ticket belongs to this organization
+      const ticket = await queryOne<any>(
+        `SELECT id, organization_id, escalated_to_super FROM support_tickets WHERE id = $1;`,
+        [id]
+      );
+
+      if (!ticket) {
+        return res.status(404).json({ error: { message: 'Support ticket not found', status: 404 } });
+      }
+      if (ticket.organization_id !== orgId) {
+        return res.status(403).json({ error: { message: 'Access denied to this ticket', status: 403 } });
+      }
+      if (ticket.escalated_to_super) {
+        return res.status(400).json({ error: { message: 'Ticket is already escalated to Super Admin', status: 400 } });
+      }
+
+      const result = await SuperService.escalateTicket(id, (req.user as any)?.id);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: { message: error.message || 'Failed to escalate ticket', status: 400 } });
+    }
+  }
 }

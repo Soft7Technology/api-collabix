@@ -924,7 +924,9 @@ export class SuperService {
       `SELECT t.id, t.ticket_number AS "ticketNumber", t.title, t.description, 
               t.status, t.priority, t.opened_at AS "openedAt",
               COALESCE(o.name, 'Unknown Workspace') AS "orgName",
-              o.id AS "organizationId"
+              o.id AS "organizationId",
+              t.escalated_to_super AS "escalatedToSuper",
+              t.escalated_at AS "escalatedAt"
        FROM support_tickets t
        LEFT JOIN organizations o ON t.organization_id = o.id
        ORDER BY t.opened_at DESC;`,
@@ -954,6 +956,19 @@ export class SuperService {
         payload.priority || "medium",
       ],
     );
+
+    // Auto-assign to all org admins
+    const { rows: adminRows } = await db.query(
+      `SELECT id FROM users WHERE organization_id = $1 AND role = 'Admin'`,
+      [payload.organizationId]
+    );
+    const adminIds = adminRows.map((a: any) => a.id);
+    if (adminIds.length > 0) {
+      await db.query(
+        `UPDATE support_tickets SET assigned_admins = $1 WHERE id = $2`,
+        [adminIds, rows[0].id]
+      );
+    }
 
     await SuperService.logAudit("info", `Support ticket #${ticketNum} ("${payload.title}") opened.`);
 
@@ -1002,6 +1017,52 @@ export class SuperService {
   static async deleteSupportTicket(id: string) {
     await db.query(`DELETE FROM support_tickets WHERE id = $1;`, [id]);
     return { id };
+  }
+
+  /**
+   * Escalates a support ticket to the Super Admin.
+   */
+  static async escalateTicket(ticketId: string, escalatedByUserId: string) {
+    const { rows } = await db.query(
+      `UPDATE support_tickets
+       SET escalated_to_super = TRUE,
+           escalated_at = NOW(),
+           escalated_by = $2,
+           status = 'in_progress',
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, ticket_number AS "ticketNumber", title, status,
+                 escalated_to_super AS "escalatedToSuper",
+                 escalated_at AS "escalatedAt";`,
+      [ticketId, escalatedByUserId]
+    );
+    if (!rows[0]) throw new Error('Support ticket not found.');
+    await SuperService.logAudit(
+      'info',
+      `Ticket #${rows[0].ticketNumber} escalated to Super Admin.`
+    );
+    return rows[0];
+  }
+
+  /**
+   * Retrieves all support tickets escalated to the Super Admin.
+   */
+  static async getEscalatedTickets() {
+    const { rows } = await db.query(
+      `SELECT t.id, t.ticket_number AS "ticketNumber", t.title, t.description,
+              t.status, t.priority, t.opened_at AS "openedAt",
+              t.escalated_at AS "escalatedAt",
+              t.escalated_to_super AS "escalatedToSuper",
+              COALESCE(o.name, 'Workspace') AS "orgName",
+              o.id AS "organizationId",
+              u.name AS "escalatedByName"
+       FROM support_tickets t
+       LEFT JOIN organizations o ON t.organization_id = o.id
+       LEFT JOIN users u ON t.escalated_by = u.id
+       WHERE t.escalated_to_super = TRUE
+       ORDER BY t.escalated_at DESC;`
+    );
+    return rows;
   }
 
   /**
