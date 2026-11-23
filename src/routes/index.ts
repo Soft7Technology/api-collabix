@@ -301,6 +301,7 @@ router.get("/support/tickets", SupportController.getTenantTickets);
 router.post("/support/tickets", SupportController.createTenantTicket);
 router.get("/support/tickets/:id/replies", SupportController.getTenantTicketReplies);
 router.post("/support/tickets/:id/replies", SupportController.createTenantTicketReply);
+router.post("/support/tickets/:id/escalate", requirePermission("admin:manage"), SupportController.escalateTenantTicket);
 
 // Platform administration stays in this API and is guarded again inside each
 // controller action with an explicit is_super_admin check.

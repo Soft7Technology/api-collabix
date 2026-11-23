@@ -1,0 +1,4965 @@
+{
+  "info": {
+    "_postman_id": "collabix-backend-api-collection",
+    "name": "Collabix API",
+    "description": "Complete Postman collection for the Collabix backend REST API, covering Authentication, Projects, Tasks, Team Members, Sprints, Meetings, Monitoring, Documentation, Git Repositories, System Settings, and Super Admin Management.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "projectId",
+      "value": "project-uuid-placeholder",
+      "type": "string"
+    },
+    {
+      "key": "taskId",
+      "value": "task-uuid-placeholder",
+      "type": "string"
+    },
+    {
+      "key": "memberId",
+      "value": "member-uuid-placeholder",
+      "type": "string"
+    },
+    {
+      "key": "sprintId",
+      "value": "sprint-uuid-placeholder",
+      "type": "string"
+    },
+    {
+      "key": "meetingId",
+      "value": "meeting-uuid-placeholder",
+      "type": "string"
+    },
+    {
+      "key": "leaveId",
+      "value": "leave-uuid-placeholder",
+      "type": "string"
+    },
+    {
+      "key": "discussionId",
+      "value": "discussion-uuid-placeholder",
+      "type": "string"
+    },
+    {
+      "key": "reportId",
+      "value": "report-uuid-placeholder",
+      "type": "string"
+    },
+    {
+      "key": "repoId",
+      "value": "repo-uuid-placeholder",
+      "type": "string"
+    },
+    {
+      "key": "ticketId",
+      "value": "ticket-uuid-placeholder",
+      "type": "string"
+    },
+    {
+      "key": "organizationId",
+      "value": "org-uuid-placeholder",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01. Health & Status",
+      "item": [
+        {
+          "name": "Root Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Checks basic platform availability",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "API Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Checks API subsystem health status and timestamp",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "02. Authentication & Session",
+      "item": [
+        {
+          "name": "Register Organization & Owner",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Registers a new tenant organization and default owner account.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyName\": \"Acme Corp\",\n  \"fullName\": \"Jane Doe\",\n  \"email\": \"jane.doe@example.com\",\n  \"phone\": \"+1234567890\",\n  \"password\": \"SecurePassword123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Authenticates user credentials, sets session cookies, and returns user & permission information.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane.doe@example.com\",\n  \"password\": \"SecurePassword123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Save accessToken from cookie or response",
+                  "if (pm.cookies.has(\"access_token\")) {",
+                  "    const token = pm.cookies.get(\"access_token\");",
+                  "    pm.collectionVariables.set(\"accessToken\", token);",
+                  "    pm.environment.set(\"accessToken\", token);",
+                  "    console.log(\"Saved access_token to variables from cookie.\");",
+                  "}",
+                  "const res = pm.response.json();",
+                  "if (res.user && res.user.organizationId) {",
+                  "    pm.collectionVariables.set(\"organizationId\", res.user.organizationId);",
+                  "    pm.environment.set(\"organizationId\", res.user.organizationId);",
+                  "}",
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Current Session (Me)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Returns the authenticated user profile, organization info, and granted permissions."
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Rotates refresh token and returns new session cookies.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Revokes refresh token in database and clears session cookies."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Invite Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-invite?token=invite_token_here",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify-invite"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "invite_token_here",
+                  "description": "Email invite token"
+                }
+              ],
+              "variable": []
+            },
+            "description": "Verifies the member invitation token before setting up password.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Setup Password (Invited User)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/setup-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "setup-password"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Sets the initial password for an invited user and activates their account.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"invite_token_here\",\n  \"password\": \"NewUserPassword123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/forgot-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "forgot-password"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Sends a password reset link to the given registered email address.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane.doe@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Reset Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-reset-token?email=jane.doe@example.com&token=reset_token_here",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify-reset-token"
+              ],
+              "query": [
+                {
+                  "key": "email",
+                  "value": "jane.doe@example.com",
+                  "description": ""
+                },
+                {
+                  "key": "token",
+                  "value": "reset_token_here",
+                  "description": ""
+                }
+              ],
+              "variable": []
+            },
+            "description": "Verifies whether a password reset token is valid and unexpired.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "reset-password"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Resets user password using the verified reset token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane.doe@example.com\",\n  \"token\": \"reset_token_here\",\n  \"password\": \"NewPassword123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "03. User Profile & Security",
+      "item": [
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "profile"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Updates current user full name and email address.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Smith\",\n  \"email\": \"jane.smith@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "change-password"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Changes current user password securely after validating the old password.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"CurrentPassword123!\",\n  \"newPassword\": \"BrandNewPassword123!\",\n  \"confirmNewPassword\": \"BrandNewPassword123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Organization Details",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/organization",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "organization"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Updates organization name and timezone (Admin only).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Acme Corporation Inc.\",\n  \"timezone\": \"Asia/Kolkata\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "04. Subscription & Billing",
+      "item": [
+        {
+          "name": "Get Organization Subscription",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscription",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "subscription"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Retrieves active SaaS subscription tier, status, and period info."
+          },
+          "response": []
+        },
+        {
+          "name": "Update / Upgrade Subscription Plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscription",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "subscription"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Updates plan tier or creates order for upgraded billing (Admin only).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"enterprise\",\n  \"billingCycle\": \"yearly\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Subscription Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscription/create-order",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "subscription",
+                "create-order"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Generates Razorpay subscription order for frontend checkout.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"pro\",\n  \"billingCycle\": \"monthly\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Subscription Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscription/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "subscription",
+                "verify"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Verifies HMAC signature of completed Razorpay payment.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"razorpayPaymentId\": \"pay_123456789\",\n  \"razorpaySubscriptionId\": \"sub_123456789\",\n  \"razorpaySignature\": \"signature_hash_here\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Subscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscription/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "subscription",
+                "cancel"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Cancels active SaaS subscription at the end of the current billing cycle.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Razorpay Webhook Listener",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-razorpay-signature",
+                "value": "webhook_signature_header_value"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/subscription/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "subscription",
+                "webhook"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Raw webhook receiver invoked by Razorpay server for automated renewal processing.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"subscription.charged\",\n  \"payload\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "05. Projects",
+      "item": [
+        {
+          "name": "List All Projects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "projects"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Returns all projects accessible to the current user's role."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Project by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/projects/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "projects",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Returns detailed project attributes, members, and progress metrics."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "projects"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Creates a new workspace project.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mobile App Redesign\",\n  \"description\": \"Redesigning the iOS and Android application UI/UX.\",\n  \"status\": \"active\",\n  \"dueDate\": \"2026-12-31\",\n  \"color\": \"#4F46E5\",\n  \"memberIds\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Project",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/projects/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "projects",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Updates project attributes or status.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mobile App Redesign v2\",\n  \"status\": \"active\",\n  \"progress\": 45,\n  \"dueDate\": \"2027-01-31\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Project",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/projects/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "projects",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Deletes a project and related records (Admin only)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "06. Tasks",
+      "item": [
+        {
+          "name": "List Tasks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Fetches tasks filtered by tenant and user role."
+          },
+          "response": []
+        },
+        {
+          "name": "List Tasks by Project",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks?projectId={{projectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks"
+              ],
+              "query": [
+                {
+                  "key": "projectId",
+                  "value": "{{projectId}}",
+                  "description": ""
+                }
+              ],
+              "variable": []
+            },
+            "description": "Filters tasks belonging to a specific project."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Task by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Retrieves full task details, assignees, and attachments."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Creates a new task in the specified project.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Implement OAuth2 Authentication\",\n  \"description\": \"Add GitHub and Google OAuth2 integration with secure callback handling.\",\n  \"status\": \"todo\",\n  \"priority\": \"high\",\n  \"assigneeId\": \"{{memberId}}\",\n  \"projectId\": \"{{projectId}}\",\n  \"dueDate\": \"2026-11-15\",\n  \"startDate\": \"2026-11-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Task",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Updates task status, priority, due date, or assignees.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\",\n  \"priority\": \"urgent\",\n  \"description\": \"Updated description with latest API specs.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Task",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Deletes task by ID."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Task Git Development Activity",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/:taskId/development",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                ":taskId",
+                "development"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "taskId",
+                  "value": "taskId-id",
+                  "description": "URL parameter :taskId"
+                }
+              ]
+            },
+            "description": "Returns connected git commits and pull request branches linked to this task."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "07. Team Members & RBAC",
+      "item": [
+        {
+          "name": "List Team Members",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/team",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "team"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Lists all team members in the organization."
+          },
+          "response": []
+        },
+        {
+          "name": "List Team Members (Filtered by Date Range)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/team?startDate=2026-01-01&endDate=2026-12-31",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "team"
+              ],
+              "query": [
+                {
+                  "key": "startDate",
+                  "value": "2026-01-01",
+                  "description": ""
+                },
+                {
+                  "key": "endDate",
+                  "value": "2026-12-31",
+                  "description": ""
+                }
+              ],
+              "variable": []
+            },
+            "description": "Lists members with calculated worked hours across the given date range."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Member by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/team/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "team",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Gets detailed profile and activity metrics for a specific member."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Member Directly",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/team",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "team"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Creates a team member record directly.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Alex Rivera\",\n  \"role\": \"Teammates\",\n  \"email\": \"alex.rivera@example.com\",\n  \"avatarColor\": \"#10B981\",\n  \"initials\": \"AR\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Invite Member via Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/team/invite",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "team",
+                "invite"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Sends an email invite with an onboarding token (Admin only).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sarah Connor\",\n  \"email\": \"sarah.connor@example.com\",\n  \"roleId\": \"uuid-of-role\",\n  \"role\": \"Teammates\",\n  \"departmentId\": null,\n  \"projectId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Member Role",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/team/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "team",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Updates role of a team member (Admin/Manager hierarchy check enforced).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"Manager\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Member Position / Designation",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/team/:id/position",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "team",
+                ":id",
+                "position"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Updates job title or position.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"designation\": \"Senior Full Stack Engineer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Member Department",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/team/:id/department",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "team",
+                ":id",
+                "department"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Assigns member to a department.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"departmentId\": \"department-uuid-here\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Task Creation Rights",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/team/:id/task-rights",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "team",
+                ":id",
+                "task-rights"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Grants or revokes permission for teammates to create tasks.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"canCreateTasks\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Member",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/team/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "team",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Removes member from tenant organization."
+          },
+          "response": []
+        },
+        {
+          "name": "List Roles",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/roles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "roles"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Returns platform roles (Admin, Manager, Team leader, Teammates, etc.)."
+          },
+          "response": []
+        },
+        {
+          "name": "List Departments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/departments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "departments"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Returns organizational departments (Engineering, Design, Marketing, Sales, etc.)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "08. Discussions",
+      "item": [
+        {
+          "name": "List Project Discussions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/projects/:projectId/discussions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "projects",
+                ":projectId",
+                "discussions"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "projectId",
+                  "value": "projectId-id",
+                  "description": "URL parameter :projectId"
+                }
+              ]
+            },
+            "description": "Retrieves all discussion threads for a project."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Discussion Topic",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/projects/:projectId/discussions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "projects",
+                ":projectId",
+                "discussions"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "projectId",
+                  "value": "projectId-id",
+                  "description": "URL parameter :projectId"
+                }
+              ]
+            },
+            "description": "Starts a new discussion topic or issue.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"discussion\",\n  \"priority\": \"medium\",\n  \"title\": \"API Gateway Architecture Decision\",\n  \"description\": \"Should we migrate routing to Envoy or stay on Express reverse proxy?\",\n  \"assignedTo\": \"{{memberId}}\",\n  \"attachments\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Discussion Replies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/discussions/:discussionId/replies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "discussions",
+                ":discussionId",
+                "replies"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "discussionId",
+                  "value": "discussionId-id",
+                  "description": "URL parameter :discussionId"
+                }
+              ]
+            },
+            "description": "Retrieves chronological comments/replies in a discussion thread."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Reply to Discussion",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/discussions/:discussionId/replies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "discussions",
+                ":discussionId",
+                "replies"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "discussionId",
+                  "value": "discussionId-id",
+                  "description": "URL parameter :discussionId"
+                }
+              ]
+            },
+            "description": "Adds a reply to the specified discussion.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"I recommend staying on Express for Phase 1 to minimize DevOps complexity.\",\n  \"attachments\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Toggle Resolve Discussion",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/discussions/:id/resolve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "discussions",
+                ":id",
+                "resolve"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Marks discussion as resolved or re-opens it."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Discussion",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/discussions/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "discussions",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Deletes a discussion thread."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "09. Sprints",
+      "item": [
+        {
+          "name": "List Sprints",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sprints?projectId={{projectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sprints"
+              ],
+              "query": [
+                {
+                  "key": "projectId",
+                  "value": "{{projectId}}",
+                  "description": ""
+                }
+              ],
+              "variable": []
+            },
+            "description": "Fetches sprints for a project."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Sprint",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sprints",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sprints"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Creates an agile sprint milestone.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": \"{{projectId}}\",\n  \"name\": \"Sprint 24 - Core Feature Launch\",\n  \"startDate\": \"2026-11-01\",\n  \"endDate\": \"2026-11-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Sprint",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sprints/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sprints",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Updates sprint title or dates.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sprint 24 - Extended\",\n  \"endDate\": \"2026-11-20\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Sprint",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sprints/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sprints",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Deletes sprint record (Admin only)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "10. Meetings & Video Sync",
+      "item": [
+        {
+          "name": "List Meetings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/meetings?tab=upcoming&team=Engineering&status=upcoming",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "meetings"
+              ],
+              "query": [
+                {
+                  "key": "tab",
+                  "value": "upcoming",
+                  "description": ""
+                },
+                {
+                  "key": "team",
+                  "value": "Engineering",
+                  "description": ""
+                },
+                {
+                  "key": "status",
+                  "value": "upcoming",
+                  "description": ""
+                }
+              ],
+              "variable": []
+            },
+            "description": "Lists scheduled and past meetings with optional filters."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Meeting by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/meetings/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "meetings",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Fetches details of a specific meeting."
+          },
+          "response": []
+        },
+        {
+          "name": "Schedule Meeting",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/meetings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "meetings"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Schedules a new meeting.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Sprint Planning Sync\",\n  \"projectId\": \"{{projectId}}\",\n  \"platform\": \"teams\",\n  \"meetingLink\": \"https://teams.microsoft.com/l/meetup-join/sample\",\n  \"meetingCode\": \"MS-789-432\",\n  \"passcode\": \"123456\",\n  \"teamDepartment\": \"Engineering\",\n  \"description\": \"Bi-weekly sprint planning and backlog grooming.\",\n  \"agenda\": [\n    \"Review previous sprint metrics\",\n    \"Assign high priority tickets\"\n  ],\n  \"date\": \"2026-11-03\",\n  \"startTime\": \"10:00\",\n  \"endTime\": \"11:00\",\n  \"durationMinutes\": 60,\n  \"timezone\": \"Asia/Kolkata\",\n  \"status\": \"upcoming\",\n  \"attendees\": [\n    \"Jane Doe\",\n    \"Alex Rivera\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Start Instant Meeting",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/meetings/instant",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "meetings",
+                "instant"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Creates and starts an immediate live sync meeting.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Emergency Incident Huddle\",\n  \"teamDepartment\": \"DevOps\",\n  \"attendees\": [\n    \"Jane Doe\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Meeting",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/meetings/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "meetings",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Updates meeting status, recording link, or notes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"completed\",\n  \"notes\": \"Discussed database replication and resolved action items.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Meeting",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/meetings/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "meetings",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Cancels and removes a meeting."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Meeting Chat Messages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/meetings/:id/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "meetings",
+                ":id",
+                "messages"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Retrieves live chat messages sent during the meeting."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Meeting Chat Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/meetings/:id/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "meetings",
+                ":id",
+                "messages"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Sends a chat message in the meeting channel.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Here is the link to the sprint board: https://app.collabix.com/sprints\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "11. Leaves & Activity Feed",
+      "item": [
+        {
+          "name": "List Leaves",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/leaves?memberId={{memberId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "leaves"
+              ],
+              "query": [
+                {
+                  "key": "memberId",
+                  "value": "{{memberId}}",
+                  "description": ""
+                }
+              ],
+              "variable": []
+            },
+            "description": "Retrieves leave applications."
+          },
+          "response": []
+        },
+        {
+          "name": "Apply for Leave",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/leaves",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "leaves"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Submits a leave application (Teammates can only apply for themselves).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"memberId\": \"{{memberId}}\",\n  \"type\": \"sick\",\n  \"startDate\": \"2026-11-10\",\n  \"endDate\": \"2026-11-12\",\n  \"reason\": \"Viral fever recovery\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Leave Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/leaves/:id/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "leaves",
+                ":id",
+                "status"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Approves or rejects a leave application (Admin / Manager only).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"approved\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel / Delete Leave",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/leaves/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "leaves",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Cancels a leave application."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Recent Activity Feed",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/activity",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "activity"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Fetches organization audit activity log stream."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "12. Work Documentation Reports",
+      "item": [
+        {
+          "name": "List Work Reports",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/documentation/reports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "documentation",
+                "reports"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Lists weekly, monthly, and annual work documentation reports."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Reports Summary Metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/documentation/reports/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "documentation",
+                "reports",
+                "summary"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Returns summary counts and status breakdowns for team reports."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Work Report by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/documentation/reports/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "documentation",
+                "reports",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Fetches detailed work report including daily tasks, milestones, and achievements."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Work Report",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/documentation/reports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "documentation",
+                "reports"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Creates and submits a weekly/monthly/yearly work documentation report.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Weekly Engineering Report - W44\",\n  \"type\": \"weekly\",\n  \"period\": \"Week 44 (Oct 26 - Nov 01, 2026)\",\n  \"startDate\": \"2026-10-26\",\n  \"endDate\": \"2026-11-01\",\n  \"project\": \"API Collabix\",\n  \"projectId\": \"{{projectId}}\",\n  \"workCategory\": \"Development\",\n  \"summary\": \"Completed migration to PostgreSQL connection pool and added Postman specs.\",\n  \"tasks\": [\n    {\n      \"title\": \"Setup Postman Collection Generation\",\n      \"project\": \"API Collabix\",\n      \"status\": \"completed\",\n      \"hours\": 12,\n      \"priority\": \"high\"\n    }\n  ],\n  \"achievements\": [\n    \"Zero-downtime database migration\",\n    \"100% test pass rate\"\n  ],\n  \"challenges\": \"CORS issues with third-party webhooks resolved.\",\n  \"challengesStatus\": \"resolved\",\n  \"skills\": [\n    \"Node.js\",\n    \"Express\",\n    \"TypeScript\",\n    \"PostgreSQL\"\n  ],\n  \"nextGoals\": [\n    \"Deploy to production staging environment\"\n  ],\n  \"status\": \"submitted\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Work Report",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/documentation/reports/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "documentation",
+                "reports",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Edits a work report.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"summary\": \"Updated summary with final sprint deliverables.\",\n  \"status\": \"submitted\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Review Work Report",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/documentation/reports/:id/review",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "documentation",
+                "reports",
+                ":id",
+                "review"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Approves or requests changes on a submitted work report.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"approve\",\n  \"comment\": \"Excellent work on resolving the webhook issues!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Work Report",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/documentation/reports/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "documentation",
+                "reports",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Deletes a work report."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "13. Screen Monitoring & Time Tracking",
+      "item": [
+        {
+          "name": "Start Monitoring",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/monitoring/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "monitoring",
+                "start"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Anchors clock-in start time for today's workday.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Stop Monitoring",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/monitoring/stop",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "monitoring",
+                "stop"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Stops active monitoring workday session.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Start Monitoring Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/monitoring/session/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "monitoring",
+                "session",
+                "start"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Registers active desktop tracking session and returns organization screenshot interval rules.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"device_uuid\": \"desktop-app-uuid-987\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Stop Monitoring Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/monitoring/session/stop",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "monitoring",
+                "session",
+                "stop"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Closes the desktop tracking session.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": \"sess-123456789\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Send Session Heartbeat",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/monitoring/session/heartbeat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "monitoring",
+                "session",
+                "heartbeat"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Periodic heartbeat from desktop client recording active window title and application.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": \"sess-123456789\",\n  \"active_app\": \"Visual Studio Code\",\n  \"active_domain\": \"github.com\",\n  \"window_title\": \"app.ts - api-collabix\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Upload Screenshot (Multipart)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "screenshot",
+                  "type": "file",
+                  "description": "Binary image file (JPEG/PNG)"
+                },
+                {
+                  "key": "status",
+                  "value": "active",
+                  "type": "text",
+                  "description": "active or inactive"
+                },
+                {
+                  "key": "captured_at",
+                  "value": "2026-10-28T21:17:32.515Z",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/monitoring/upload",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "monitoring",
+                "upload"
+              ]
+            },
+            "description": "Uploads captured screenshot and logs duration worked."
+          },
+          "response": []
+        },
+        {
+          "name": "List Captured Screenshots",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/monitoring/screenshots?userId={{memberId}}&startDate=2026-10-01&endDate=2026-10-31&limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "monitoring",
+                "screenshots"
+              ],
+              "query": [
+                {
+                  "key": "userId",
+                  "value": "{{memberId}}",
+                  "description": ""
+                },
+                {
+                  "key": "startDate",
+                  "value": "2026-10-01",
+                  "description": ""
+                },
+                {
+                  "key": "endDate",
+                  "value": "2026-10-31",
+                  "description": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": ""
+                }
+              ],
+              "variable": []
+            },
+            "description": "Fetches screenshots for timesheet inspection."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Screenshot",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/monitoring/screenshots/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "monitoring",
+                "screenshots",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Soft deletes a screenshot while preserving logged work hours."
+          },
+          "response": []
+        },
+        {
+          "name": "Start Lunch Break",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/monitoring/lunch/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "monitoring",
+                "lunch",
+                "start"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Pauses active work and marks beginning of lunch break.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Stop Lunch Break",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/monitoring/lunch/stop",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "monitoring",
+                "lunch",
+                "stop"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Resumes working time and records lunch break duration.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "14. File Uploads & Storage",
+      "item": [
+        {
+          "name": "Upload Attachment (Multipart)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "description": "File to upload (Cloudflare R2 or local disk storage)"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/upload/attachment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "upload",
+                "attachment"
+              ]
+            },
+            "description": "Uploads document or attachment up to 50MB."
+          },
+          "response": []
+        },
+        {
+          "name": "Stream / Download Uploaded File",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/upload/file/attachments/sample-file.pdf?download=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "upload",
+                "file",
+                "attachments",
+                "sample-file.pdf"
+              ],
+              "query": [
+                {
+                  "key": "download",
+                  "value": "false",
+                  "description": ""
+                }
+              ],
+              "variable": []
+            },
+            "description": "Streams or downloads stored file from Cloudflare R2 / disk."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "15. Git Repositories & GitHub Integration",
+      "item": [
+        {
+          "name": "List Repositories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/repositories?projectId={{projectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "repositories"
+              ],
+              "query": [
+                {
+                  "key": "projectId",
+                  "value": "{{projectId}}",
+                  "description": ""
+                }
+              ],
+              "variable": []
+            },
+            "description": "Lists connected git repositories."
+          },
+          "response": []
+        },
+        {
+          "name": "Create / Connect Repository",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/repositories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "repositories"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Connects a repository to a project.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"collabix-frontend\",\n  \"projectId\": \"{{projectId}}\",\n  \"defaultBranch\": \"main\",\n  \"visibility\": \"private\",\n  \"repoUrl\": \"https://github.com/org/collabix-frontend\",\n  \"description\": \"React client SPA for Collabix platform\",\n  \"githubOwner\": \"org\",\n  \"githubRepoName\": \"collabix-frontend\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Repository Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/repositories/:id/dashboard?branch=main",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "repositories",
+                ":id",
+                "dashboard"
+              ],
+              "query": [
+                {
+                  "key": "branch",
+                  "value": "main",
+                  "description": ""
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Returns repository statistics, commit history, branch count, and latest activity."
+          },
+          "response": []
+        },
+        {
+          "name": "List Branches",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/repositories/:id/branches",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "repositories",
+                ":id",
+                "branches"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Fetches branches."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Branch",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/repositories/:repoId/branches",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "repositories",
+                ":repoId",
+                "branches"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "repoId",
+                  "value": "repoId-id",
+                  "description": "URL parameter :repoId"
+                }
+              ]
+            },
+            "description": "Creates a new git branch.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"feature/postman-collection\",\n  \"targetBranch\": \"main\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Commits",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/repositories/:id/commits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "repositories",
+                ":id",
+                "commits"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Fetches commits."
+          },
+          "response": []
+        },
+        {
+          "name": "Record Commit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/repositories/commits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "repositories",
+                "commits"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Records a git commit linked to a task.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"repoId\": \"{{repoId}}\",\n  \"commitHash\": \"a1b2c3d4e5f6\",\n  \"message\": \"feat: add postman collection generator\",\n  \"authorName\": \"Jane Doe\",\n  \"branch\": \"main\",\n  \"taskId\": \"{{taskId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Pull Requests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/repositories/:repoId/pull-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "repositories",
+                ":repoId",
+                "pull-requests"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "repoId",
+                  "value": "repoId-id",
+                  "description": "URL parameter :repoId"
+                }
+              ]
+            },
+            "description": "Fetches repository pull requests."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Pull Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/repositories/:repoId/pull-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "repositories",
+                ":repoId",
+                "pull-requests"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "repoId",
+                  "value": "repoId-id",
+                  "description": "URL parameter :repoId"
+                }
+              ]
+            },
+            "description": "Creates pull request in repository.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"feat(api): add postman collection\",\n  \"sourceBranch\": \"feature/postman-collection\",\n  \"targetBranch\": \"main\",\n  \"taskId\": \"{{taskId}}\",\n  \"description\": \"Generates comprehensive Postman collection for all routes.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Repository Activity",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/repositories/:repoId/activity",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "repositories",
+                ":repoId",
+                "activity"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "repoId",
+                  "value": "repoId-id",
+                  "description": "URL parameter :repoId"
+                }
+              ]
+            },
+            "description": "Fetches repository commit & PR activity."
+          },
+          "response": []
+        },
+        {
+          "name": "List Files in Repo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/repositories/:repoId/files",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "repositories",
+                ":repoId",
+                "files"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "repoId",
+                  "value": "repoId-id",
+                  "description": "URL parameter :repoId"
+                }
+              ]
+            },
+            "description": "Lists repository tree files."
+          },
+          "response": []
+        },
+        {
+          "name": "Get File Content",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/repositories/:repoId/file-content?path=package.json",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "repositories",
+                ":repoId",
+                "file-content"
+              ],
+              "query": [
+                {
+                  "key": "path",
+                  "value": "package.json",
+                  "description": ""
+                }
+              ],
+              "variable": [
+                {
+                  "key": "repoId",
+                  "value": "repoId-id",
+                  "description": "URL parameter :repoId"
+                }
+              ]
+            },
+            "description": "Reads raw content of a file in the repository."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Repo README",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/repositories/:repoId/readme",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "repositories",
+                ":repoId",
+                "readme"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "repoId",
+                  "value": "repoId-id",
+                  "description": "URL parameter :repoId"
+                }
+              ]
+            },
+            "description": "Fetches rendered or raw README."
+          },
+          "response": []
+        },
+        {
+          "name": "Sync Repository with Remote",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/repositories/:repoId/sync",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "repositories",
+                ":repoId",
+                "sync"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "repoId",
+                  "value": "repoId-id",
+                  "description": "URL parameter :repoId"
+                }
+              ]
+            },
+            "description": "Triggers immediate sync with GitHub remote.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Repository",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/repositories/:repoId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "repositories",
+                ":repoId"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "repoId",
+                  "value": "repoId-id",
+                  "description": "URL parameter :repoId"
+                }
+              ]
+            },
+            "description": "Disconnects repository from Collabix."
+          },
+          "response": []
+        },
+        {
+          "name": "Get GitHub OAuth URL",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/github/auth-url",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "github",
+                "auth-url"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Generates GitHub OAuth authorization URL."
+          },
+          "response": []
+        },
+        {
+          "name": "GitHub OAuth Callback",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/github/callback?code=sample_github_oauth_code",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "github",
+                "callback"
+              ],
+              "query": [
+                {
+                  "key": "code",
+                  "value": "sample_github_oauth_code",
+                  "description": ""
+                }
+              ],
+              "variable": []
+            },
+            "description": "Exchanges code for GitHub personal token."
+          },
+          "response": []
+        },
+        {
+          "name": "List User GitHub Repositories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/github/repos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "github",
+                "repos"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Fetches repositories from connected user GitHub account."
+          },
+          "response": []
+        },
+        {
+          "name": "Disconnect GitHub Account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/github/disconnect",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "github",
+                "disconnect"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Disconnects GitHub OAuth token from user profile.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GitHub Webhook Listener",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/github/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "github",
+                "webhook"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Receives push and PR events directly from GitHub Webhooks.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ref\": \"refs/heads/main\",\n  \"commits\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "16. System Settings (SMTP & WhatsApp)",
+      "item": [
+        {
+          "name": "Get SMTP Settings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/system/smtp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "system",
+                "smtp"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Gets current SMTP credentials and configuration (Admin only)."
+          },
+          "response": []
+        },
+        {
+          "name": "Update SMTP Settings",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/system/smtp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "system",
+                "smtp"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Saves custom SMTP email configuration.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"Hostinger SMTP\",\n  \"encryption\": \"SSL\",\n  \"host\": \"smtp.hostinger.com\",\n  \"port\": 465,\n  \"username\": \"alerts@yourdomain.com\",\n  \"password\": \"SecretSmtpPassword123!\",\n  \"fromName\": \"Collabix Alerts\",\n  \"fromEmail\": \"alerts@yourdomain.com\",\n  \"replyTo\": \"support@yourdomain.com\",\n  \"testRecipient\": \"admin@yourdomain.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Test SMTP Connection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/system/smtp/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "system",
+                "smtp",
+                "test"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Sends a test email to verify SMTP configuration.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"testRecipient\": \"admin@yourdomain.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete SMTP Settings",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/system/smtp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "system",
+                "smtp"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Resets SMTP configuration to platform defaults."
+          },
+          "response": []
+        },
+        {
+          "name": "Get WhatsApp Settings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/system/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "system",
+                "whatsapp"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Fetches WhatsApp notification credentials."
+          },
+          "response": []
+        },
+        {
+          "name": "Update WhatsApp Settings",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/system/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "system",
+                "whatsapp"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Updates WhatsApp integration settings.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"phoneNumber\": \"+1234567890\",\n  \"apiKey\": \"whatsapp_cloud_api_key_here\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete WhatsApp Settings",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/system/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "system",
+                "whatsapp"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Clears WhatsApp integration settings."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "17. Tenant Help & Support",
+      "item": [
+        {
+          "name": "List Support Tickets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/support/tickets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "support",
+                "tickets"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Retrieves support tickets opened by the current organization."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Support Ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/support/tickets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "support",
+                "tickets"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Opens a new customer support ticket.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Question regarding billing invoice\",\n  \"description\": \"We upgraded our plan yesterday and need the GST tax invoice.\",\n  \"priority\": \"high\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Ticket Replies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/support/tickets/:id/replies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "support",
+                "tickets",
+                ":id",
+                "replies"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Fetches reply thread for a support ticket."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Reply to Support Ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/support/tickets/:id/replies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "support",
+                "tickets",
+                ":id",
+                "replies"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Posts a reply message in the ticket conversation.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Thank you for the quick response. Here is the transaction ID: tx_12345.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "18. Super Admin Management",
+      "item": [
+        {
+          "name": "List All Organizations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/organizations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "organizations"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Lists all tenant organizations on the platform (Super Admin only)."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Organization",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/organizations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "organizations"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Provision a new tenant organization.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Delta Innovations\",\n  \"ownerEmail\": \"owner@deltainno.com\",\n  \"phone\": \"+1987654321\",\n  \"plan\": \"Enterprise\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Organization",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/organizations/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "organizations",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Updates organization status or approved flag.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Delta Innovations Ltd\",\n  \"subscriptionStatus\": \"active\",\n  \"plan\": \"Enterprise\",\n  \"isApproved\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Change Organization Plan Tier",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/organizations/:id/plan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "organizations",
+                ":id",
+                "plan"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Updates plan tier directly.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plan\": \"Enterprise\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Approve Organization",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/organizations/:id/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "organizations",
+                ":id",
+                "approve"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Approves a pending tenant organization.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Revoke Organization Access",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/organizations/:id/revoke",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "organizations",
+                ":id",
+                "revoke"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Revokes tenant organization access immediately.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Organization",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/organizations/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "organizations",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Permanently deletes an organization."
+          },
+          "response": []
+        },
+        {
+          "name": "Impersonate Organization Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/organizations/:id/impersonate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "organizations",
+                ":id",
+                "impersonate"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Generates an impersonation session token as the tenant's admin.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Platform Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "users"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Lists all users across all tenants."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Platform User Role",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/users/:id/role",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "users",
+                ":id",
+                "role"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Super Admin update user role.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roleId\": \"new-role-uuid\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Platform User Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/users/:id/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "users",
+                ":id",
+                "status"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Suspends or activates a user account across the platform.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"SUSPENDED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Platform User",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/users/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "users",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Deletes a platform user."
+          },
+          "response": []
+        },
+        {
+          "name": "Get System Audit Logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/logs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "logs"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Retrieves global platform audit logs."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Feature Flags",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/flags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "flags"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Retrieves global feature toggle flags."
+          },
+          "response": []
+        },
+        {
+          "name": "Toggle Feature Flag",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/flags/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "flags",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Toggles a platform feature flag.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Security Policies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/security",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "security"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Gets platform security policies (e.g. 2FA enforcement, IP whitelists)."
+          },
+          "response": []
+        },
+        {
+          "name": "Toggle Security Policy",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/security/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "security",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Enforces or relaxes a platform security policy.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Platform Settings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "settings"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Gets platform-wide settings (maintenance mode, registration rules, etc.)."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Platform Settings",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "settings"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Updates platform maintenance mode or global parameters.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"maintenanceMode\": false,\n  \"allowRegistration\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Generate Super Admin API Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/settings/keys/generate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "settings",
+                "keys",
+                "generate"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Creates a machine-to-machine API key.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"CI/CD Deployment Service Key\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Revoke Super Admin API Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/settings/keys/revoke",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "settings",
+                "keys",
+                "revoke"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Revokes a machine-to-machine API key.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keyId\": \"api-key-uuid-here\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Super Admin Support Tickets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/tickets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "tickets"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Lists all tickets from all tenant organizations."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Support Ticket Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/tickets/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "tickets",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Updates ticket lifecycle state.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\",\n  \"priority\": \"medium\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reply to Support Ticket as Platform Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/tickets/:id/replies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "tickets",
+                ":id",
+                "replies"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Sends an administrative response to a tenant support ticket.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Your invoice has been regenerated and sent to your billing email.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Invoices",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/invoices",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "invoices"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Lists billing invoices across tenants."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Manual Invoice",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/invoices",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "invoices"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Generates custom billing invoice.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"organizationId\": \"{{organizationId}}\",\n  \"amount\": 4999,\n  \"currency\": \"INR\",\n  \"description\": \"Custom Enterprise Add-on\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Download Invoice PDF",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/super/invoices/:id/pdf",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "super",
+                "invoices",
+                ":id",
+                "pdf"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "id-id",
+                  "description": "URL parameter :id"
+                }
+              ]
+            },
+            "description": "Downloads rendered invoice PDF."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

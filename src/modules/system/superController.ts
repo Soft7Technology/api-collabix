@@ -397,6 +397,16 @@ export class SuperController {
     }
   }
 
+  static async getEscalatedTickets(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!requireSuperAdmin(req, res)) return;
+      const tickets = await SuperService.getEscalatedTickets();
+      res.json(tickets);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async createTicket(req: Request, res: Response, next: NextFunction) {
     try {
       if (!requireSuperAdmin(req, res)) return;

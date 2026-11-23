@@ -52,6 +52,7 @@ router.post("/settings/keys/revoke", SuperController.revokeKey);
 // ==========================================
 // Support Tickets Routes (Phase 3)
 // ==========================================
+router.get("/tickets/escalated", SuperController.getEscalatedTickets);
 router.get("/tickets", SuperController.getTickets);
 router.post("/tickets", SuperController.createTicket);
 router.patch("/tickets/:id", SuperController.updateTicket);
