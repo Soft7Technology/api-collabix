@@ -11,7 +11,11 @@ export interface LeaveInput {
 }
 
 export class LeaveService {
-  static async getById(id: string, organizationId?: string | null, isSuperAdmin?: boolean) {
+  static async getById(
+    id: string,
+    organizationId?: string | null,
+    isSuperAdmin?: boolean,
+  ) {
     let queryStr = "SELECT * FROM leaves WHERE id = $1";
     const params: any[] = [id];
     if (organizationId && !isSuperAdmin) {
@@ -35,12 +39,37 @@ export class LeaveService {
       attachmentName: r.attachment_name,
     };
   }
+  static async canReview(
+    leaveId: string,
+    organizationId: string,
+    reviewerId: string,
+    roleName: string,
+  ) {
+    const { rows } = await db.query(
+      `SELECT 1
+     FROM leaves l
+     JOIN users employee ON employee.id = l.member_id
+     WHERE l.id = $1
+       AND l.organization_id = $2
+       AND employee.organization_id = $2
+       AND (
+         $3 = 'Admin'
+         OR ($3 = 'Manager' AND employee.manager_id = $4)
+       )
+     LIMIT 1`,
+      [leaveId, organizationId, roleName, reviewerId],
+    );
 
+    return rows.length > 0;
+  }
   static async create(leave: LeaveInput, organizationId?: string | null) {
     const id = `l${Date.now()}`;
     let resolvedOrgId = organizationId;
     if (!resolvedOrgId && leave.memberId) {
-      const uRes = await db.query("SELECT organization_id FROM users WHERE id = $1;", [leave.memberId]);
+      const uRes = await db.query(
+        "SELECT organization_id FROM users WHERE id = $1;",
+        [leave.memberId],
+      );
       resolvedOrgId = uRes.rows[0]?.organization_id || null;
     }
 
@@ -78,20 +107,38 @@ export class LeaveService {
   static async updateStatus(
     id: string,
     status: "APPROVED" | "REJECTED",
-    organizationId?: string | null,
-    isSuperAdmin?: boolean,
+    organizationId: string,
+    reviewerId: string,
+    rejectionReason?: string,
   ) {
-    let queryStr = `UPDATE leaves SET status = $1 WHERE id = $2`;
-    const params: any[] = [status, id];
-    if (organizationId && !isSuperAdmin) {
-      queryStr += ` AND (organization_id = $3 OR organization_id IS NULL)`;
-      params.push(organizationId);
+    if (!organizationId || !reviewerId) {
+      throw new Error("Organization and reviewer are required");
     }
-    queryStr += ` RETURNING *;`;
 
-    const { rows } = await db.query(queryStr, params);
+    const { rows } = await db.query(
+      `UPDATE leaves
+     SET
+       status = $1,
+       reviewed_by = $2,
+       reviewed_at = NOW(),
+       rejection_reason = $3
+     WHERE id = $4
+       AND organization_id = $5
+       AND status = 'PENDING'
+     RETURNING *`,
+      [
+        status,
+        reviewerId,
+        status === "REJECTED" ? rejectionReason || null : null,
+        id,
+        organizationId,
+      ],
+    );
+
     const updated = rows[0];
+
     if (!updated) return null;
+
     return {
       id: updated.id,
       memberId: updated.member_id,
@@ -102,10 +149,17 @@ export class LeaveService {
       reason: updated.reason,
       attachmentUrl: updated.attachment_url,
       attachmentName: updated.attachment_name,
+      reviewedBy: updated.reviewed_by,
+      reviewedAt: updated.reviewed_at,
+      rejectionReason: updated.rejection_reason,
     };
   }
 
-  static async delete(id: string, organizationId?: string | null, isSuperAdmin?: boolean) {
+  static async delete(
+    id: string,
+    organizationId?: string | null,
+    isSuperAdmin?: boolean,
+  ) {
     let queryStr = `DELETE FROM leaves WHERE id = $1`;
     const params: any[] = [id];
     if (organizationId && !isSuperAdmin) {

@@ -140,14 +140,12 @@ export class DashboardController {
         userCtx.role_rank === 4 &&
         leaveData.memberId !== userCtx.id
       ) {
-        res
-          .status(403)
-          .json({
-            error: {
-              message: "Teammates can only apply for their own leaves",
-              status: 403,
-            },
-          });
+        res.status(403).json({
+          error: {
+            message: "Teammates can only apply for their own leaves",
+            status: 403,
+          },
+        });
         return;
       }
 
@@ -190,14 +188,12 @@ export class DashboardController {
         userCtx.role_rank === 4 &&
         existingLeave.memberId !== userCtx.id
       ) {
-        res
-          .status(403)
-          .json({
-            error: {
-              message: "Teammates can only cancel their own leaves",
-              status: 403,
-            },
-          });
+        res.status(403).json({
+          error: {
+            message: "Teammates can only cancel their own leaves",
+            status: 403,
+          },
+        });
         return;
       }
 
@@ -362,29 +358,41 @@ export class DashboardController {
     }
   }
 
-  static async updateLeaveStatus(req: Request, res: Response, next: NextFunction) {
+  static async updateLeaveStatus(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
     try {
       const { id } = req.params;
-      const { status } = req.body;
+      const { status, rejectionReason } = req.body;
       const userCtx = req.user;
-      const isAuthorized =
-        userCtx &&
-        (userCtx.is_super_admin ||
-          (userCtx.role_rank !== undefined && userCtx.role_rank <= 3) ||
-          (userCtx.role_name &&
-            ["Admin", "Manager", "Team leader", "Super Admin"].includes(userCtx.role_name)));
 
-      if (!isAuthorized) {
+      if (
+        !userCtx ||
+        userCtx.is_super_admin ||
+        !["Admin", "Manager"].includes(userCtx.role_name || "")
+      ) {
         res.status(403).json({
           error: {
-            message: "Only Managers, HR, Admins, or Super Admins can review leave requests.",
+            message:
+              "Only organization Admins and assigned Managers can review leave requests.",
             status: 403,
           },
         });
         return;
       }
 
-      if (status !== "APPROVED" && status !== "REJECTED") {
+      const organizationId = userCtx.organization_id;
+
+      if (!organizationId) {
+        res.status(403).json({
+          error: { message: "Organization access is required.", status: 403 },
+        });
+        return;
+      }
+
+      if (!["APPROVED", "REJECTED"].includes(status)) {
         res.status(400).json({
           error: {
             message: "Status must be APPROVED or REJECTED.",
@@ -396,14 +404,29 @@ export class DashboardController {
 
       const existingLeave = await LeaveService.getById(
         id,
-        userCtx.organization_id || null,
-        userCtx.is_super_admin || false,
+        organizationId,
+        false,
       );
+
       if (!existingLeave) {
         res.status(404).json({
+          error: { message: "Leave request not found.", status: 404 },
+        });
+        return;
+      }
+     const roleName = userCtx.role_name ?? "";
+      const canReview = await LeaveService.canReview(
+        id,
+        organizationId,
+        userCtx.id,
+        roleName,
+      );
+
+      if (!canReview) {
+        res.status(403).json({
           error: {
-            message: "Leave request not found.",
-            status: 404,
+            message: "You are not authorized to review this employee's leave.",
+            status: 403,
           },
         });
         return;
@@ -412,40 +435,53 @@ export class DashboardController {
       const updated = await LeaveService.updateStatus(
         id,
         status,
-        userCtx.organization_id || null,
-        userCtx.is_super_admin || false,
+        organizationId,
+        userCtx.id,
+        rejectionReason,
       );
-      if (updated) {
-        const member = await MemberService.getById(
-          updated.memberId,
-          userCtx.organization_id || null,
-          {
-            id: userCtx.id,
-            roleName: userCtx.role_name || "Teammates",
-            roleRank: userCtx.role_rank || 4,
-            departmentId: userCtx.department_id || null,
-            organizationId: userCtx.organization_id || null,
-            isSuperAdmin: userCtx.is_super_admin || false,
+
+      if (!updated) {
+        res.status(409).json({
+          error: {
+            message: "This leave request has already been reviewed or changed.",
+            status: 409,
           },
-        );
-        if (member && member.email) {
-          emailService.sendLeaveStatusEmail(
+        });
+        return;
+      }
+
+      const member = await MemberService.getById(
+        updated.memberId,
+        organizationId,
+        {
+          id: userCtx.id,
+          roleName,
+          roleRank: userCtx.role_rank ?? 4,
+          departmentId: userCtx.department_id || null,
+          organizationId,
+          isSuperAdmin: false,
+        },
+      );
+
+      if (member?.email) {
+        emailService
+          .sendLeaveStatusEmail(
             member.email,
             updated.type,
             updated.startDate,
             updated.endDate,
-            status
-          ).catch((err) => {
-            console.error("Failed to send leave status update email:", err);
+            status,
+          )
+          .catch((err) => {
+            console.error("Failed to send leave status email:", err);
           });
-        }
-
-        await DashboardService.logActivity(
-          userCtx.id,
-          `${status.toLowerCase()} leave request`,
-          `for ${member?.name || "Member"}`
-        );
       }
+
+      await DashboardService.logActivity(
+        userCtx.id,
+        `${status.toLowerCase()} leave request`,
+        `for ${member?.name || "Member"}`,
+      );
 
       res.json(updated);
     } catch (error) {

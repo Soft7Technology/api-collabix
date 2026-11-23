@@ -141,47 +141,105 @@ export class DashboardService {
     organizationId?: string | null,
     userCtx?: any,
   ) {
-    let queryStr = "SELECT l.* FROM leaves l";
-    const params = [];
-    const conditions = [];
-    if (organizationId) {
-      conditions.push(`l.organization_id = $${conditions.length + 1}`);
-      params.push(organizationId);
-    } else if (userCtx && !userCtx.isSuperAdmin) {
+    // No organization context or platform Super Admin:
+    // never expose organization leave records.
+    if (!organizationId || !userCtx || userCtx.isSuperAdmin) {
       return [];
     }
 
-    if (memberId) {
-      conditions.push(`l.member_id = $${conditions.length + 1}`);
-      params.push(memberId);
+    const role = userCtx.roleName;
+
+    const allowedRoles = ["Admin", "Hr", "Manager", "Team leader", "Teammates"];
+
+    if (!allowedRoles.includes(role)) {
+      return [];
     }
-    if (userCtx && userCtx.roleRank >= 3 && !userCtx.isSuperAdmin) {
-      conditions.push(`(
-        l.member_id = $${conditions.length + 1}
-        OR EXISTS (
-          SELECT 1 FROM users u
-          WHERE l.member_id = u.id
-            AND (u.department_id = $${conditions.length + 2} OR $${conditions.length + 2} IS NULL OR u.id = $${conditions.length + 1})
+
+    const params: any[] = [organizationId];
+
+    if (role === "Manager" || role === "Team leader" || role === "Teammates") {
+      params.push(userCtx.id);
+    }
+
+    let queryStr = `
+    SELECT l.*, u.name AS member_name
+    FROM leaves l
+    INNER JOIN users u ON u.id = l.member_id
+    WHERE l.organization_id = $1
+      AND u.organization_id = $1
+  `;
+
+    if (role === "Manager") {
+      queryStr += `
+      AND (
+        l.member_id = $2
+        OR u.manager_id = $2
+      )
+    `;
+    } else if (role === "Team leader") {
+      queryStr += `
+      AND (
+        l.member_id = $2
+        OR u.team_lead_id = $2
+      )
+    `;
+    } else if (role === "Teammates") {
+      queryStr += `
+      AND (
+        l.member_id = $2
+        OR (
+          l.status = 'APPROVED'
+          AND u.id <> $2
+          AND EXISTS (
+        SELECT 1 FROM users cu
+        WHERE cu.id = $2
+          AND cu.organization_id = $1
+          AND cu.team_lead_id IS NOT NULL
+          AND cu.team_lead_id = u.team_lead_id
+         )
         )
-      )`);
-      params.push(userCtx.id, userCtx.departmentId || null);
+      )
+    `;
     }
-    if (conditions.length > 0) {
-      queryStr += " WHERE " + conditions.join(" AND ");
+
+    if (memberId) {
+      params.push(memberId);
+      queryStr += ` AND l.member_id = $${params.length}`;
     }
-    queryStr += " ORDER BY l.id DESC;";
+
+    queryStr += ` ORDER BY l.start_date DESC, l.id DESC`;
+
     const { rows } = await db.query(queryStr, params);
-    return rows.map((r) => ({
-      id: r.id,
-      memberId: r.member_id,
-      type: r.type,
-      startDate: r.start_date,
-      endDate: r.end_date,
-      status: r.status,
-      reason: r.reason,
-      attachmentUrl: r.attachment_url,
-      attachmentName: r.attachment_name,
-    }));
+
+    return rows.map((r) => {
+      const isColleagueAvailability =
+        role === "Teammates" && r.member_id !== userCtx.id;
+
+      // Colleague availability must not expose private leave details.
+      if (isColleagueAvailability) {
+        return {
+          id: r.id,
+          memberId: r.member_id,
+          memberName: r.member_name,
+          startDate: r.start_date,
+          endDate: r.end_date,
+          status: r.status,
+        };
+      }
+
+      return {
+        id: r.id,
+        memberId: r.member_id,
+        memberName: r.member_name,
+        type: r.type,
+        startDate: r.start_date,
+        endDate: r.end_date,
+        status: r.status,
+        reason: r.reason,
+        attachmentUrl: r.attachment_url,
+        attachmentName: r.attachment_name,
+      };
+    });
   }
 
   static async getActivityItems(
