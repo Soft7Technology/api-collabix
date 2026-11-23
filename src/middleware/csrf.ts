@@ -35,11 +35,20 @@ export function validateCSRF(req: Request, res: Response, next: NextFunction) {
     return next();
   }
 
-  // 3. Validate header matches cookie for POST, PUT, PATCH, DELETE
-  const csrfHeader = req.headers["x-csrf-token"];
-  if (!csrfHeader || csrfHeader !== csrfCookie) {
-    console.warn("⚠️ CSRF verification bypassed: Token missing or mismatch.");
-  }
+ const csrfHeader = req.headers["x-csrf-token"];
 
-  next();
+ if (
+   typeof csrfHeader !== "string" ||
+   !csrfCookie ||
+   csrfHeader !== csrfCookie
+ ) {
+   return res.status(403).json({
+     error: {
+       message: "Invalid or missing CSRF token.",
+       status: 403,
+     },
+   });
+ }
+
+ return next();
 }

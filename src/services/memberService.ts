@@ -36,13 +36,13 @@ export class MemberService {
 
     const params: any[] = [organizationId];
     let dateCondition = "";
-    
+
     if (dateRange && dateRange.startDate) {
       const start = dateRange.startDate;
       const end = dateRange.endDate || start;
       params.push(start, end);
       const startIdx = params.length - 1; // 2
-      const endIdx = params.length;       // 3
+      const endIdx = params.length; // 3
       dateCondition = `(sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date >= $${startIdx}::date AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date <= $${endIdx}::date`;
     } else {
       dateCondition = `(sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date`;
@@ -68,11 +68,10 @@ export class MemberService {
       !userCtx ||
       userCtx.isSuperAdmin ||
       (userCtx.roleRank !== undefined && userCtx.roleRank <= 2) ||
-      (userCtx.roleName && (
-        userCtx.roleName.toLowerCase() === "admin" ||
-        userCtx.roleName.toLowerCase() === "super admin" ||
-        userCtx.roleName.toLowerCase() === "manager"
-      ));
+      (userCtx.roleName &&
+        (userCtx.roleName.toLowerCase() === "admin" ||
+          userCtx.roleName.toLowerCase() === "super admin" ||
+          userCtx.roleName.toLowerCase() === "manager"));
 
     if (!isAdminOrManager && userCtx?.id) {
       params.push(userCtx.id);
@@ -93,9 +92,12 @@ export class MemberService {
 
     const { rows } = await db.query(queryStr, params);
     return rows.map((r) => {
-      const isRecent = r.latest_log_time && (Date.now() - new Date(r.latest_log_time).getTime() < 7 * 60 * 1000);
+      const isRecent =
+        r.latest_log_time &&
+        Date.now() - new Date(r.latest_log_time).getTime() < 7 * 60 * 1000;
       const isOnline = isRecent && r.latest_log_status === "active";
-      const isLunch = r.latest_log_status === "lunch" && r.latest_log_path === "LUNCH_START";
+      const isLunch =
+        r.latest_log_status === "lunch" && r.latest_log_path === "LUNCH_START";
       const status = isOnline ? "Active" : isLunch ? "Break" : "Offline";
       return {
         id: r.id,
@@ -113,8 +115,22 @@ export class MemberService {
         todaySeconds: r.today_seconds || 0,
         todayLunchSeconds: r.today_lunch_seconds || 0,
         todayIdleSeconds: r.today_idle_seconds || 0,
-        clockInTime: r.first_clock_in ? new Date(r.first_clock_in).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }) : null,
-        clockOutTime: r.last_clock_out ? new Date(r.last_clock_out).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }) : null,
+        clockInTime: r.first_clock_in
+          ? new Date(r.first_clock_in).toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+              timeZone: "Asia/Kolkata",
+            })
+          : null,
+        clockOutTime: r.last_clock_out
+          ? new Date(r.last_clock_out).toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+              timeZone: "Asia/Kolkata",
+            })
+          : null,
         firstClockIn: r.first_clock_in || null,
         lastClockOut: r.last_clock_out || null,
         canCreateTasks: !!r.can_create_tasks,
@@ -160,11 +176,10 @@ export class MemberService {
       !userCtx ||
       userCtx.isSuperAdmin ||
       (userCtx.roleRank !== undefined && userCtx.roleRank <= 2) ||
-      (userCtx.roleName && (
-        userCtx.roleName.toLowerCase() === "admin" ||
-        userCtx.roleName.toLowerCase() === "super admin" ||
-        userCtx.roleName.toLowerCase() === "manager"
-      ));
+      (userCtx.roleName &&
+        (userCtx.roleName.toLowerCase() === "admin" ||
+          userCtx.roleName.toLowerCase() === "super admin" ||
+          userCtx.roleName.toLowerCase() === "manager"));
 
     if (!isTargetAdminOrManager && userCtx?.id && userCtx.id !== id) {
       params.push(userCtx.id);
@@ -183,9 +198,12 @@ export class MemberService {
     const { rows } = await db.query(queryStr, params);
     if (!rows[0]) return null;
     const r = rows[0];
-    const isRecent = r.latest_log_time && (Date.now() - new Date(r.latest_log_time).getTime() < 7 * 60 * 1000);
+    const isRecent =
+      r.latest_log_time &&
+      Date.now() - new Date(r.latest_log_time).getTime() < 7 * 60 * 1000;
     const isOnline = isRecent && r.latest_log_status === "active";
-    const isLunch = r.latest_log_status === "lunch" && r.latest_log_path === "LUNCH_START";
+    const isLunch =
+      r.latest_log_status === "lunch" && r.latest_log_path === "LUNCH_START";
     const status = isOnline ? "Active" : isLunch ? "Break" : "Offline";
     return {
       id: r.id,
@@ -203,8 +221,22 @@ export class MemberService {
       todaySeconds: r.today_seconds || 0,
       todayLunchSeconds: r.today_lunch_seconds || 0,
       todayIdleSeconds: r.today_idle_seconds || 0,
-      clockInTime: r.first_clock_in ? new Date(r.first_clock_in).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }) : null,
-      clockOutTime: r.last_clock_out ? new Date(r.last_clock_out).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }) : null,
+      clockInTime: r.first_clock_in
+        ? new Date(r.first_clock_in).toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+            timeZone: "Asia/Kolkata",
+          })
+        : null,
+      clockOutTime: r.last_clock_out
+        ? new Date(r.last_clock_out).toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+            timeZone: "Asia/Kolkata",
+          })
+        : null,
       firstClockIn: r.first_clock_in || null,
       lastClockOut: r.last_clock_out || null,
       canCreateTasks: !!r.can_create_tasks,
@@ -214,14 +246,14 @@ export class MemberService {
   static async updateTaskRights(
     id: string,
     organizationId: string,
-    canCreateTasks: boolean
+    canCreateTasks: boolean,
   ) {
     const { rows } = await db.query(
       `UPDATE users
        SET can_create_tasks = $1
        WHERE id = $2 AND organization_id = $3
        RETURNING id, name, can_create_tasks AS "canCreateTasks";`,
-      [canCreateTasks, id, organizationId]
+      [canCreateTasks, id, organizationId],
     );
 
     if (!rows[0]) {
@@ -235,7 +267,8 @@ export class MemberService {
     const id = `u${Date.now()}`;
 
     // Resolve Member Role ID
-    const roleName = member.role.toLowerCase() === "admin" ? "Admin" : "Teammates";
+    const roleName =
+      member.role.toLowerCase() === "admin" ? "Admin" : "Teammates";
     const roleRes = await db.query("SELECT id FROM roles WHERE name = $1;", [
       roleName,
     ]);
@@ -312,7 +345,10 @@ export class MemberService {
       throw error;
     }
 
-    const departmentId = member.departmentId && member.departmentId !== "none" ? member.departmentId : null;
+    const departmentId =
+      member.departmentId && member.departmentId !== "none"
+        ? member.departmentId
+        : null;
 
     // Generate random avatar color and initials
     const colors = [
@@ -420,13 +456,15 @@ export class MemberService {
     id: string,
     role: string,
     organizationId?: string | null,
-    userCtx?: { id: string; is_super_admin?: boolean; role_rank?: number }
+    userCtx?: { id: string; is_super_admin?: boolean; role_rank?: number },
   ) {
     if (!organizationId && !userCtx?.is_super_admin) return null;
 
     // 1. Self-editing check: non-super-admin users cannot edit their own role
     if (userCtx && !userCtx.is_super_admin && userCtx.id === id) {
-      const error: any = new Error("You cannot edit your own role or position.");
+      const error: any = new Error(
+        "You cannot edit your own role or position.",
+      );
       error.status = 403;
       throw error;
     }
@@ -434,7 +472,7 @@ export class MemberService {
     // 2. Fetch target user's current role rank
     const targetUserRes = await db.query(
       `SELECT u.id, u.name, r.rank as role_rank FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = $1;`,
-      [id]
+      [id],
     );
     const targetUser = targetUserRes.rows[0];
     if (!targetUser) return null;
@@ -443,7 +481,9 @@ export class MemberService {
       const requesterRank = userCtx.role_rank ?? 4;
       const targetRank = targetUser.role_rank ?? 4;
       if (targetRank <= requesterRank) {
-        const error: any = new Error("You can only edit roles for team members below you in the hierarchy.");
+        const error: any = new Error(
+          "You can only edit roles for team members below you in the hierarchy.",
+        );
         error.status = 403;
         throw error;
       }
@@ -462,7 +502,9 @@ export class MemberService {
     if (userCtx && !userCtx.is_super_admin) {
       const requesterRank = userCtx.role_rank ?? 4;
       if (matchedRole.rank <= requesterRank) {
-        const error: any = new Error("You cannot assign a role with rank equal to or higher than your own.");
+        const error: any = new Error(
+          "You cannot assign a role with rank equal to or higher than your own.",
+        );
         error.status = 403;
         throw error;
       }
@@ -493,11 +535,13 @@ export class MemberService {
     id: string,
     designation: string,
     organizationId?: string | null,
-    userCtx?: { id: string; is_super_admin?: boolean; role_rank?: number }
+    userCtx?: { id: string; is_super_admin?: boolean; role_rank?: number },
   ) {
     // 1. Self-editing check: non-super-admin users cannot edit their own position
     if (userCtx && !userCtx.is_super_admin && userCtx.id === id) {
-      const error: any = new Error("You cannot edit your own role or position.");
+      const error: any = new Error(
+        "You cannot edit your own role or position.",
+      );
       error.status = 403;
       throw error;
     }
@@ -505,7 +549,7 @@ export class MemberService {
     // 2. Fetch target user's current role rank
     const targetUserRes = await db.query(
       `SELECT u.id, u.name, r.rank as role_rank FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = $1;`,
-      [id]
+      [id],
     );
     const targetUser = targetUserRes.rows[0];
     if (!targetUser) return null;
@@ -514,13 +558,16 @@ export class MemberService {
       const requesterRank = userCtx.role_rank ?? 4;
       const targetRank = targetUser.role_rank ?? 4;
       if (targetRank <= requesterRank) {
-        const error: any = new Error("You can only edit positions for team members below you in the hierarchy.");
+        const error: any = new Error(
+          "You can only edit positions for team members below you in the hierarchy.",
+        );
         error.status = 403;
         throw error;
       }
     }
 
-    let queryStr = "UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2";
+    let queryStr =
+      "UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2";
     const params: any[] = [designation.trim(), id];
     if (organizationId && !userCtx?.is_super_admin) {
       queryStr += " AND (organization_id = $3 OR organization_id IS NULL)";
@@ -548,9 +595,10 @@ export class MemberService {
     id: string,
     departmentId: string | null,
     organizationId?: string | null,
-    userCtx?: { id: string; is_super_admin?: boolean; role_rank?: number }
+    userCtx?: { id: string; is_super_admin?: boolean; role_rank?: number },
   ) {
-    let queryStr = "UPDATE users SET department_id = $1, updated_at = NOW() WHERE id = $2";
+    let queryStr =
+      "UPDATE users SET department_id = $1, updated_at = NOW() WHERE id = $2";
     const params: any[] = [departmentId, id];
     if (organizationId && !userCtx?.is_super_admin) {
       queryStr += " AND (organization_id = $3 OR organization_id IS NULL)";
