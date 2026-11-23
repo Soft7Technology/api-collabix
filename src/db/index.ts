@@ -92,6 +92,8 @@ export async function runMigrations() {
     // 6. Run post-migration alters once all tables are guaranteed to exist
     await client.query(`
       ALTER TABLE screen_logs ADD COLUMN IF NOT EXISTS duration_seconds INT DEFAULT 0;
+      ALTER TABLE screen_logs ADD COLUMN IF NOT EXISTS active_seconds INT NOT NULL DEFAULT 0;
+      ALTER TABLE screen_logs ADD COLUMN IF NOT EXISTS idle_seconds INT NOT NULL DEFAULT 0;
       ALTER TABLE projects ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id) ON DELETE SET NULL;
       ALTER TABLE organizations ADD COLUMN IF NOT EXISTS screenshot_interval INT DEFAULT 300;
       ALTER TABLE organizations ADD COLUMN IF NOT EXISTS screenshots_blurred BOOLEAN DEFAULT false;

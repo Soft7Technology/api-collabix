@@ -55,7 +55,7 @@ export class MemberService {
         (SELECT captured_at FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_time,
         (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.status = 'active' OR sl.status = 'inactive' OR (sl.status = 'stopped' AND sl.duration_seconds > 0)) AND ${dateCondition}) as today_seconds,
         (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'lunch' AND ${dateCondition}) as today_lunch_seconds,
-        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'inactive' AND ${dateCondition}) as today_idle_seconds,
+        (SELECT COALESCE(SUM(CASE WHEN COALESCE(sl.idle_seconds, 0) > 0 THEN sl.idle_seconds WHEN sl.status = 'inactive' THEN sl.duration_seconds ELSE 0 END), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND ${dateCondition}) as today_idle_seconds,
         (SELECT MIN(sl.captured_at) FROM screen_logs sl WHERE sl.user_id = u.id AND ${dateCondition}) as first_clock_in,
         (SELECT MAX(sl.captured_at) FROM screen_logs sl WHERE sl.user_id = u.id AND ${dateCondition}) as last_clock_out
       FROM users u
@@ -141,7 +141,7 @@ export class MemberService {
         (SELECT captured_at FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_time,
         (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.status = 'active' OR sl.status = 'inactive' OR (sl.status = 'stopped' AND sl.duration_seconds > 0)) AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as today_seconds,
         (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'lunch' AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as today_lunch_seconds,
-        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'inactive' AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as today_idle_seconds,
+        (SELECT COALESCE(SUM(CASE WHEN COALESCE(sl.idle_seconds, 0) > 0 THEN sl.idle_seconds WHEN sl.status = 'inactive' THEN sl.duration_seconds ELSE 0 END), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as today_idle_seconds,
         (SELECT MIN(sl.captured_at) FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as first_clock_in,
         (SELECT MAX(sl.captured_at) FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) as last_clock_out
       FROM users u

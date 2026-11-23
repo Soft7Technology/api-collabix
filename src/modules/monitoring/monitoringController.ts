@@ -74,37 +74,46 @@ export class MonitoringController {
         }
       }
 
-      const statusParam = (req.body?.status === "inactive" || req.body?.status === "idle") ? "inactive" : "active";
       const capturedAtParam = req.body?.captured_at ? new Date(req.body.captured_at) : new Date();
+      const activeRaw = req.body?.active_seconds;
+      const idleRaw = req.body?.idle_seconds;
+      const hasActivityCounters =
+        activeRaw !== undefined && idleRaw !== undefined &&
+        Number.isFinite(Number(activeRaw)) && Number.isFinite(Number(idleRaw));
+      const activeSeconds = hasActivityCounters ? Math.max(0, Math.floor(Number(activeRaw))) : 0;
+      const idleSeconds = hasActivityCounters ? Math.max(0, Math.floor(Number(idleRaw))) : 0;
+      const statusParam = hasActivityCounters
+        ? ((idleSeconds > activeSeconds && idleSeconds > 0) ||
+           (activeSeconds === 0 && idleSeconds === 0 && (req.body?.status === "inactive" || req.body?.status === "idle"))
+            ? "inactive"
+            : "active")
+        : ((req.body?.status === "inactive" || req.body?.status === "idle") ? "inactive" : "active");
 
-      // Calculate exact duration since previous capture
+      // Prefer exact system-wide active/idle samples from Electron. Fall back to
+      // the legacy capture interval calculation for older desktop clients.
       const prevLogRes = await db.query(
         `SELECT captured_at, status FROM screen_logs WHERE user_id = $1 ORDER BY captured_at DESC LIMIT 1;`,
         [userId]
       );
-      let durationSeconds = 0;
-      if (prevLogRes.rows.length > 0) {
-        const prev = prevLogRes.rows[0];
-        if (prev.status === "active" || prev.status === "inactive") {
-          const elapsed = capturedAtParam.getTime() - new Date(prev.captured_at).getTime();
-          if (elapsed > 0) {
-            if (elapsed <= 10 * 60 * 1000) {
-              durationSeconds = Math.min(300, Math.floor(elapsed / 1000));
-            } else if (elapsed <= 30 * 60 * 1000) {
-              durationSeconds = 300;
-            } else {
-              durationSeconds = 300;
-            }
+      let durationSeconds = activeSeconds + idleSeconds;
+      if (!hasActivityCounters) {
+        durationSeconds = 0;
+        if (prevLogRes.rows.length > 0) {
+          const prev = prevLogRes.rows[0];
+          if (prev.status === "active" || prev.status === "inactive") {
+            const elapsed = capturedAtParam.getTime() - new Date(prev.captured_at).getTime();
+            if (elapsed > 0) durationSeconds = Math.min(300, Math.floor(elapsed / 1000));
           }
         }
       }
 
-      // Insert log into the database
+      // Store exact active/idle seconds for the interval represented by this capture.
       const result = await db.query(
-        `INSERT INTO screen_logs (user_id, screenshot_path, status, duration_seconds, captured_at)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO screen_logs
+          (user_id, screenshot_path, status, duration_seconds, active_seconds, idle_seconds, captured_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING id, captured_at;`,
-        [userId, screenshotPath, statusParam, durationSeconds, capturedAtParam]
+        [userId, screenshotPath, statusParam, durationSeconds, activeSeconds, idleSeconds, capturedAtParam]
       );
 
       res.status(200).json({
@@ -139,7 +148,7 @@ export class MonitoringController {
 
       const params: any[] = [orgId];
       let queryStr = `
-        SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, sl.duration_seconds, sl.user_id, u.name as user_name, u.email as user_email
+        SELECT sl.id, sl.screenshot_path, sl.captured_at, sl.display_width, sl.display_height, sl.status, sl.duration_seconds, sl.active_seconds, sl.idle_seconds, sl.user_id, u.name as user_name, u.email as user_email
         FROM screen_logs sl
         JOIN users u ON sl.user_id = u.id
         WHERE u.organization_id IS NOT DISTINCT FROM $1
