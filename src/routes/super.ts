@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { SuperController } from "../modules/system/superController.js";
 
+
 const router = Router();
 
 // ==========================================
@@ -58,6 +59,7 @@ router.patch("/tickets/:id", SuperController.updateTicket);
 router.delete("/tickets/:id", SuperController.deleteTicket);
 router.get("/tickets/:id/replies", SuperController.getTicketReplies);
 router.post("/tickets/:id/replies", SuperController.createTicketReply);
+
 
 // ==========================================
 // Invoices & Billing Routes (Phase 3)

@@ -12,7 +12,10 @@ export class SuperService {
    */
   static async isMaintenanceModeActive(): Promise<boolean> {
     const now = Date.now();
-    if (maintenanceModeCache && now - maintenanceModeCache.timestamp < CACHE_TTL_MS) {
+    if (
+      maintenanceModeCache &&
+      now - maintenanceModeCache.timestamp < CACHE_TTL_MS
+    ) {
       return maintenanceModeCache.active;
     }
 
@@ -129,8 +132,12 @@ export class SuperService {
         );
         ownerName = existingUser.rows[0].name;
       } else {
-        const adminRole = await db.query(`SELECT id FROM roles WHERE name = 'Admin';`);
-        const engDept = await db.query(`SELECT id FROM departments WHERE name = 'Engineering';`);
+        const adminRole = await db.query(
+          `SELECT id FROM roles WHERE name = 'Admin';`,
+        );
+        const engDept = await db.query(
+          `SELECT id FROM departments WHERE name = 'Engineering';`,
+        );
         const userId = "u-" + crypto.randomBytes(4).toString("hex");
         const name = ownerEmail
           .split("@")[0]
@@ -143,7 +150,9 @@ export class SuperService {
             .map((n: string) => n[0])
             .join("")
             .toUpperCase() || "AD";
-        const tempPass = await hashPassword(crypto.randomBytes(8).toString("hex"));
+        const tempPass = await hashPassword(
+          crypto.randomBytes(8).toString("hex"),
+        );
 
         await db.query(
           `INSERT INTO users (id, name, role, email, avatar_color, initials, password_hash, role_id, department_id, status, is_super_admin, organization_id)
@@ -170,7 +179,12 @@ export class SuperService {
     );
 
     // Auto-generate initial subscription invoice for the new organization
-    const invoiceAmount = planTier === "Enterprise" ? "₹999 /mo" : planTier === "Basic" ? "₹200 /mo" : "₹450 /mo";
+    const invoiceAmount =
+      planTier === "Enterprise"
+        ? "₹999 /mo"
+        : planTier === "Basic"
+          ? "₹200 /mo"
+          : "₹450 /mo";
     try {
       await SuperService.createInvoice({
         organizationId: org.id,
@@ -204,7 +218,10 @@ export class SuperService {
       isApproved?: boolean;
     },
   ) {
-    const existing = await db.query(`SELECT * FROM organizations WHERE id = $1;`, [id]);
+    const existing = await db.query(
+      `SELECT * FROM organizations WHERE id = $1;`,
+      [id],
+    );
     if (!existing.rows[0]) {
       throw new Error(`Organization with ID '${id}' not found.`);
     }
@@ -288,7 +305,12 @@ export class SuperService {
     );
 
     // Auto-record upgraded billing invoice
-    const newAmount = plan === "Enterprise" ? "₹999 /mo" : plan === "Basic" ? "₹200 /mo" : "₹450 /mo";
+    const newAmount =
+      plan === "Enterprise"
+        ? "₹999 /mo"
+        : plan === "Basic"
+          ? "₹200 /mo"
+          : "₹450 /mo";
     try {
       await SuperService.createInvoice({
         organizationId: id,
@@ -362,26 +384,41 @@ export class SuperService {
    * Deletes an organization safely inside a transaction, cleaning up dependencies.
    */
   static async deleteOrganization(id: string) {
-    const orgRes = await db.query(`SELECT name FROM organizations WHERE id = $1;`, [id]);
+    const orgRes = await db.query(
+      `SELECT name FROM organizations WHERE id = $1;`,
+      [id],
+    );
     const orgName = orgRes.rows[0]?.name || id;
 
     // Transactional multi-table dependency cleanup
     await db.query("BEGIN;");
     try {
       // 1. Unlink system audit logs
-      await db.query(`UPDATE system_audit_logs SET organization_id = NULL WHERE organization_id = $1;`, [id]);
+      await db.query(
+        `UPDATE system_audit_logs SET organization_id = NULL WHERE organization_id = $1;`,
+        [id],
+      );
 
       // 2. Remove support ticket replies and tickets
-      await db.query(`DELETE FROM support_tickets WHERE organization_id = $1;`, [id]);
+      await db.query(
+        `DELETE FROM support_tickets WHERE organization_id = $1;`,
+        [id],
+      );
 
       // 3. Remove billing invoices
       await db.query(`DELETE FROM invoices WHERE organization_id = $1;`, [id]);
 
       // 4. Delete regular tenant users (preserving any platform superadmins)
-      await db.query(`DELETE FROM users WHERE organization_id = $1 AND is_super_admin = FALSE;`, [id]);
+      await db.query(
+        `DELETE FROM users WHERE organization_id = $1 AND is_super_admin = FALSE;`,
+        [id],
+      );
 
       // 5. Delete organization
-      const { rowCount } = await db.query(`DELETE FROM organizations WHERE id = $1;`, [id]);
+      const { rowCount } = await db.query(
+        `DELETE FROM organizations WHERE id = $1;`,
+        [id],
+      );
 
       await db.query("COMMIT;");
 
@@ -426,13 +463,15 @@ export class SuperService {
     );
 
     if (!rows[0]) {
-      throw new Error(`No active user found in organization '${orgRes.rows[0].name}' to impersonate.`);
+      throw new Error(
+        `No active user found in organization '${orgRes.rows[0].name}' to impersonate.`,
+      );
     }
 
     const targetUser = rows[0];
     const rawRefreshToken = crypto.randomBytes(40).toString("hex");
     const rfHash = hashToken(rawRefreshToken);
-     const rfExpires = getRefreshTokenExpiresAt();
+    const rfExpires = getRefreshTokenExpiresAt();
 
     await db.query(
       "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3);",
@@ -483,7 +522,12 @@ export class SuperService {
    */
   static async updateUser(
     id: string,
-    payload: { name?: string; email?: string; roleName?: string; status?: string },
+    payload: {
+      name?: string;
+      email?: string;
+      roleName?: string;
+      status?: string;
+    },
   ) {
     const existing = await db.query(`SELECT * FROM users WHERE id = $1;`, [id]);
     if (!existing.rows[0]) {
@@ -610,7 +654,9 @@ export class SuperService {
   static async updateUserStatus(id: string, status: string) {
     const normStatus = status.toUpperCase();
     if (!["ACTIVE", "SUSPENDED", "INACTIVE"].includes(normStatus)) {
-      throw new Error(`Invalid user status '${status}'. Must be ACTIVE, SUSPENDED, or INACTIVE.`);
+      throw new Error(
+        `Invalid user status '${status}'. Must be ACTIVE, SUSPENDED, or INACTIVE.`,
+      );
     }
 
     await db.query(
@@ -811,7 +857,9 @@ export class SuperService {
    * Retrieves general platform settings and API keys.
    */
   static async getPlatformSettings() {
-    const { rows } = await db.query(`SELECT key, value FROM system_platform_settings;`);
+    const { rows } = await db.query(
+      `SELECT key, value FROM system_platform_settings;`,
+    );
     const settings: Record<string, string> = {};
     for (const r of rows) {
       settings[r.key] = r.value;
@@ -868,7 +916,10 @@ export class SuperService {
       );
     }
 
-    await SuperService.logAudit("sys", "Platform global settings updated by Super Admin.");
+    await SuperService.logAudit(
+      "sys",
+      "Platform global settings updated by Super Admin.",
+    );
 
     return await SuperService.getPlatformSettings();
   }
@@ -885,7 +936,10 @@ export class SuperService {
       [newKey],
     );
 
-    await SuperService.logAudit("sec", "A new Public API Key was generated by Super Admin.");
+    await SuperService.logAudit(
+      "sec",
+      "A new Public API Key was generated by Super Admin.",
+    );
     return { apiKey: newKey };
   }
 
@@ -899,7 +953,10 @@ export class SuperService {
         `UPDATE system_platform_settings SET value = $1, updated_at = NOW() WHERE key = 'public_api_key';`,
         [rotated],
       );
-      await SuperService.logAudit("sec", "Public API Key revoked and regenerated by Super Admin.");
+      await SuperService.logAudit(
+        "sec",
+        "Public API Key revoked and regenerated by Super Admin.",
+      );
       return { apiKey: rotated };
     } else {
       const rotated = "whsec_" + crypto.randomBytes(24).toString("hex");
@@ -907,7 +964,10 @@ export class SuperService {
         `UPDATE system_platform_settings SET value = $1, updated_at = NOW() WHERE key = 'webhook_secret';`,
         [rotated],
       );
-      await SuperService.logAudit("sec", "Webhook Secret revoked and regenerated by Super Admin.");
+      await SuperService.logAudit(
+        "sec",
+        "Webhook Secret revoked and regenerated by Super Admin.",
+      );
       return { webhookSecret: rotated };
     }
   }
@@ -919,16 +979,27 @@ export class SuperService {
   /**
    * Retrieves all support tickets.
    */
+
   static async getSupportTickets() {
     const { rows } = await db.query(
-      `SELECT t.id, t.ticket_number AS "ticketNumber", t.title, t.description, 
-              t.status, t.priority, t.opened_at AS "openedAt",
-              COALESCE(o.name, 'Unknown Workspace') AS "orgName",
-              o.id AS "organizationId"
-       FROM support_tickets t
-       LEFT JOIN organizations o ON t.organization_id = o.id
-       ORDER BY t.opened_at DESC;`,
+      `SELECT
+       t.id,
+       t.ticket_number AS "ticketNumber",
+       t.title,
+       t.description,
+       t.escalated_to_super_admin AS "escalatedToSuperAdmin",
+       t.escalated_at AS "escalatedAt",
+       t.status,
+       t.priority,
+       t.opened_at AS "openedAt",
+       COALESCE(o.name, 'Unknown Workspace') AS "orgName",
+       o.id AS "organizationId"
+     FROM support_tickets t
+     LEFT JOIN organizations o ON t.organization_id = o.id
+     WHERE t.escalated_to_super_admin = TRUE
+     ORDER BY t.opened_at DESC;`,
     );
+
     return rows;
   }
 
@@ -955,7 +1026,10 @@ export class SuperService {
       ],
     );
 
-    await SuperService.logAudit("info", `Support ticket #${ticketNum} ("${payload.title}") opened.`);
+    await SuperService.logAudit(
+      "info",
+      `Support ticket #${ticketNum} ("${payload.title}") opened.`,
+    );
 
     return rows[0];
   }
@@ -963,7 +1037,10 @@ export class SuperService {
   /**
    * Updates a support ticket status.
    */
-  static async updateSupportTicket(id: string, payload: { status?: string; priority?: string }) {
+  static async updateSupportTicket(
+    id: string,
+    payload: { status?: string; priority?: string },
+  ) {
     const updates: string[] = ["updated_at = NOW()"];
     const values: any[] = [id];
 
@@ -992,6 +1069,40 @@ export class SuperService {
       "info",
       `Support ticket #${rows[0].ticketNumber} updated to '${rows[0].status}'.`,
     );
+
+    return rows[0];
+  }
+  /**
+   * Escalates a support ticket.
+   */
+
+  static async escalateSupportTicket(
+    ticketId: string,
+    organizationId: string,
+    escalatedBy: string,
+  ) {
+    const { rows } = await db.query(
+      `UPDATE support_tickets
+     SET escalated_to_super_admin = TRUE,
+         escalated_at = NOW(),
+         escalated_by = $3,
+         updated_at = NOW()
+     WHERE id = $1
+       AND organization_id = $2
+       AND escalated_to_super_admin = FALSE
+     RETURNING
+       id,
+       ticket_number AS "ticketNumber",
+       escalated_to_super_admin AS "escalatedToSuperAdmin",
+       escalated_at AS "escalatedAt";`,
+      [ticketId, organizationId, escalatedBy],
+    );
+
+    if (rows.length === 0) {
+      throw new Error(
+        "Ticket not found, does not belong to this organization, or is already escalated.",
+      );
+    }
 
     return rows[0];
   }
@@ -1050,7 +1161,10 @@ export class SuperService {
     );
 
     // Update ticket updated_at
-    await db.query(`UPDATE support_tickets SET updated_at = NOW() WHERE id = $1;`, [ticketId]);
+    await db.query(
+      `UPDATE support_tickets SET updated_at = NOW() WHERE id = $1;`,
+      [ticketId],
+    );
 
     await SuperService.logAudit(
       "info",
@@ -1078,13 +1192,25 @@ export class SuperService {
 
     for (const org of orgsWithoutInvoices) {
       const plan = org.plan || "Pro";
-      const amt = plan === "Enterprise" ? "₹999 /mo" : plan === "Basic" ? "₹200 /mo" : "₹450 /mo";
-      const dtStr = new Date(org.created_at || Date.now()).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-      const invNum = "INV-" + new Date().getFullYear() + "-" + Math.floor(100 + Math.random() * 900);
+      const amt =
+        plan === "Enterprise"
+          ? "₹999 /mo"
+          : plan === "Basic"
+            ? "₹200 /mo"
+            : "₹450 /mo";
+      const dtStr = new Date(org.created_at || Date.now()).toLocaleDateString(
+        "en-US",
+        {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        },
+      );
+      const invNum =
+        "INV-" +
+        new Date().getFullYear() +
+        "-" +
+        Math.floor(100 + Math.random() * 900);
       try {
         await db.query(
           `INSERT INTO invoices (invoice_number, organization_id, plan, amount, status, date)
@@ -1120,16 +1246,36 @@ export class SuperService {
     status?: string;
     date?: string;
   }) {
-    const invoiceNum = "INV-" + new Date().getFullYear() + "-" + Math.floor(100 + Math.random() * 900);
-    const dateStr = payload.date || new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    const invoiceNum =
+      "INV-" +
+      new Date().getFullYear() +
+      "-" +
+      Math.floor(100 + Math.random() * 900);
+    const dateStr =
+      payload.date ||
+      new Date().toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
     const { rows } = await db.query(
       `INSERT INTO invoices (invoice_number, organization_id, plan, amount, status, date)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, invoice_number AS "invoiceNumber", plan, amount, status, date;`,
-      [invoiceNum, payload.organizationId, payload.plan, payload.amount, payload.status || "paid", dateStr],
+      [
+        invoiceNum,
+        payload.organizationId,
+        payload.plan,
+        payload.amount,
+        payload.status || "paid",
+        dateStr,
+      ],
     );
 
-    await SuperService.logAudit("info", `Invoice #${invoiceNum} generated for workspace.`);
+    await SuperService.logAudit(
+      "info",
+      `Invoice #${invoiceNum} generated for workspace.`,
+    );
 
     return rows[0];
   }
@@ -1161,11 +1307,13 @@ export class SuperService {
     }
 
     const inv = rows[0];
-    const dateFormatted = inv.date || new Date(inv.createdAt).toLocaleDateString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
+    const dateFormatted =
+      inv.date ||
+      new Date(inv.createdAt).toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
 
     return `<!DOCTYPE html>
 <html lang="en">

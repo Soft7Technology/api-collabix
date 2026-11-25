@@ -17,10 +17,10 @@ function requireSuperAdmin(req: Request, res: Response): boolean {
 
 export class SuperController {
   static createInvoice(arg0: string, createInvoice: any) {
-      throw new Error("Method not implemented.");
+    throw new Error("Method not implemented.");
   }
   static downloadInvoicePdf(arg0: string, downloadInvoicePdf: any) {
-      throw new Error("Method not implemented.");
+    throw new Error("Method not implemented.");
   }
   // ==========================================
   // Organizations
@@ -41,7 +41,11 @@ export class SuperController {
       if (!requireSuperAdmin(req, res)) return;
       const { name, ownerEmail, phone, plan } = req.body;
       if (!name || typeof name !== "string" || !name.trim()) {
-        res.status(400).json({ error: { message: "Organization name is required.", status: 400 } });
+        res
+          .status(400)
+          .json({
+            error: { message: "Organization name is required.", status: 400 },
+          });
         return;
       }
       const created = await SuperService.createOrganization({
@@ -60,7 +64,8 @@ export class SuperController {
     try {
       if (!requireSuperAdmin(req, res)) return;
       const { id } = req.params;
-      const { name, phone, subscriptionStatus, trialEndsAt, plan, isApproved } = req.body;
+      const { name, phone, subscriptionStatus, trialEndsAt, plan, isApproved } =
+        req.body;
       const updated = await SuperService.updateOrganization(id, {
         name,
         phone,
@@ -84,7 +89,9 @@ export class SuperController {
       const { id } = req.params;
       const { plan } = req.body;
       if (!plan || typeof plan !== "string") {
-        res.status(400).json({ error: { message: "Plan tier is required.", status: 400 } });
+        res
+          .status(400)
+          .json({ error: { message: "Plan tier is required.", status: 400 } });
         return;
       }
       const updated = await SuperService.updateOrganizationPlan(id, plan);
@@ -143,7 +150,8 @@ export class SuperController {
     try {
       if (!requireSuperAdmin(req, res)) return;
       const { id } = req.params;
-      const { user, organization, rawRefreshToken } = await SuperService.impersonateOrganization(id);
+      const { user, organization, rawRefreshToken } =
+        await SuperService.impersonateOrganization(id);
 
       AuthController.setAuthCookies(req, res, user.id, rawRefreshToken);
 
@@ -204,7 +212,9 @@ export class SuperController {
       const { id } = req.params;
       const { roleName } = req.body;
       if (!roleName) {
-        res.status(400).json({ error: { message: "Role name is required.", status: 400 } });
+        res
+          .status(400)
+          .json({ error: { message: "Role name is required.", status: 400 } });
         return;
       }
       const updated = await SuperService.updateUserRole(id, roleName);
@@ -217,13 +227,19 @@ export class SuperController {
     }
   }
 
-  static async updateUserStatus(req: Request, res: Response, next: NextFunction) {
+  static async updateUserStatus(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
     try {
       if (!requireSuperAdmin(req, res)) return;
       const { id } = req.params;
       const { status } = req.body;
       if (!status) {
-        res.status(400).json({ error: { message: "Status is required.", status: 400 } });
+        res
+          .status(400)
+          .json({ error: { message: "Status is required.", status: 400 } });
         return;
       }
       const updated = await SuperService.updateUserStatus(id, status);
@@ -257,7 +273,8 @@ export class SuperController {
   static async getLogs(req: Request, res: Response, next: NextFunction) {
     try {
       if (!requireSuperAdmin(req, res)) return;
-      const category = typeof req.query.category === "string" ? req.query.category : undefined;
+      const category =
+        typeof req.query.category === "string" ? req.query.category : undefined;
       const logs = await SuperService.getAuditLogs(category);
       res.json(logs);
     } catch (error) {
@@ -284,7 +301,10 @@ export class SuperController {
       if (!requireSuperAdmin(req, res)) return;
       const { id } = req.params;
       const { enabled } = req.body;
-      const updated = await SuperService.toggleFeatureFlag(id, Boolean(enabled));
+      const updated = await SuperService.toggleFeatureFlag(
+        id,
+        Boolean(enabled),
+      );
       res.json({
         message: `Feature flag '${updated.label}' updated.`,
         flag: updated,
@@ -313,7 +333,10 @@ export class SuperController {
       if (!requireSuperAdmin(req, res)) return;
       const { id } = req.params;
       const { enabled } = req.body;
-      const updated = await SuperService.toggleSecurityPolicy(id, Boolean(enabled));
+      const updated = await SuperService.toggleSecurityPolicy(
+        id,
+        Boolean(enabled),
+      );
       res.json({
         message: `Security policy '${updated.label}' updated.`,
         policy: updated,
@@ -340,7 +363,8 @@ export class SuperController {
   static async updateSettings(req: Request, res: Response, next: NextFunction) {
     try {
       if (!requireSuperAdmin(req, res)) return;
-      const { platformName, supportEmail, defaultTimezone, accentColor } = req.body;
+      const { platformName, supportEmail, defaultTimezone, accentColor } =
+        req.body;
       const updated = await SuperService.updatePlatformSettings({
         platformName,
         supportEmail,
@@ -373,7 +397,9 @@ export class SuperController {
     try {
       if (!requireSuperAdmin(req, res)) return;
       const { keyType } = req.body; // 'api_key' or 'webhook'
-      const result = await SuperService.revokeKey(keyType === "webhook" ? "webhook" : "api_key");
+      const result = await SuperService.revokeKey(
+        keyType === "webhook" ? "webhook" : "api_key",
+      );
       res.json({
         message: `${keyType === "webhook" ? "Webhook secret" : "API key"} revoked and rotated.`,
         ...result,
@@ -402,7 +428,14 @@ export class SuperController {
       if (!requireSuperAdmin(req, res)) return;
       const { title, organizationId, description, priority } = req.body;
       if (!title || !organizationId) {
-        res.status(400).json({ error: { message: "Title and Organization are required.", status: 400 } });
+        res
+          .status(400)
+          .json({
+            error: {
+              message: "Title and Organization are required.",
+              status: 400,
+            },
+          });
         return;
       }
       const ticket = await SuperService.createSupportTicket({
@@ -422,7 +455,10 @@ export class SuperController {
       if (!requireSuperAdmin(req, res)) return;
       const { id } = req.params;
       const { status, priority } = req.body;
-      const ticket = await SuperService.updateSupportTicket(id, { status, priority });
+      const ticket = await SuperService.updateSupportTicket(id, {
+        status,
+        priority,
+      });
       res.json({
         message: "Ticket updated successfully.",
         ticket,
@@ -446,7 +482,11 @@ export class SuperController {
     }
   }
 
-  static async getTicketReplies(req: Request, res: Response, next: NextFunction) {
+  static async getTicketReplies(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
     try {
       if (!requireSuperAdmin(req, res)) return;
       const { id } = req.params;
@@ -457,13 +497,19 @@ export class SuperController {
     }
   }
 
-  static async createTicketReply(req: Request, res: Response, next: NextFunction) {
+  static async createTicketReply(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
     try {
       if (!requireSuperAdmin(req, res)) return;
       const { id } = req.params;
       const { message, senderName, senderRole } = req.body;
       if (!message || typeof message !== "string" || !message.trim()) {
-        res.status(400).json({ error: { message: "Message is required.", status: 400 } });
+        res
+          .status(400)
+          .json({ error: { message: "Message is required.", status: 400 } });
         return;
       }
       const reply = await SuperService.createTicketReply(id, {

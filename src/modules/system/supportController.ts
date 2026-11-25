@@ -69,6 +69,53 @@ export class SupportController {
     }
   }
 
+ static async escalateTenantTicket(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const user = req.user;
+
+      // Only an Organisation Admin can escalate.
+      // In your backend, the organisation admin role is "Admin".
+      if (!user || user.is_super_admin || user.role_name !== "Admin") {
+        res.status(403).json({
+          error: {
+            message: "Only Organisation Admins can escalate support tickets.",
+            status: 403,
+          },
+        });
+        return;
+      }
+
+      const { id } = req.params;
+
+      if (!user.organization_id) {
+        res.status(403).json({
+          error: {
+            message: "Organization context is missing.",
+            status: 403,
+          },
+        });
+        return;
+      }
+
+      const ticket = await SuperService.escalateSupportTicket(
+        id,
+        user.organization_id,
+        user.id,
+      );
+
+      res.json({
+        message: "Ticket escalated to Super Admin successfully.",
+        ticket,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   /**
    * Retrieves conversation replies for a tenant ticket, enforcing organization isolation.
    */
