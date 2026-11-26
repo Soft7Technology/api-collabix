@@ -15,7 +15,30 @@ export class ProjectController {
             isSuperAdmin: req.user.is_super_admin || false,
           }
         : undefined;
-      const projects = await ProjectService.getAll(userCtx);
+
+      const { departmentId } = req.query;
+
+      if (
+        departmentId !== undefined &&
+        (typeof departmentId !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            departmentId,
+          ))
+      ) {
+        res.status(400).json({
+          error: {
+            message: "Invalid departmentId",
+            status: 400,
+          },
+        });
+        return;
+      }
+
+      const projects = await ProjectService.getAll(
+        userCtx,
+        typeof departmentId === "string" ? departmentId : undefined,
+      );
+
       res.json(projects);
     } catch (error) {
       next(error);
@@ -55,14 +78,12 @@ export class ProjectController {
         req.user.role_rank !== undefined &&
         req.user.role_rank > 3
       ) {
-        res
-          .status(403)
-          .json({
-            error: {
-              message: "Forbidden: Teammates cannot create projects.",
-              status: 403,
-            },
-          });
+        res.status(403).json({
+          error: {
+            message: "Forbidden: Teammates cannot create projects.",
+            status: 403,
+          },
+        });
         return;
       }
       const project = await ProjectService.create(

@@ -16,7 +16,23 @@ export class MemberController {
           }
         : undefined;
 
-      const { startDate, endDate } = req.query;
+      const { startDate, endDate, departmentId } = req.query;
+
+      if (
+        departmentId !== undefined &&
+        (typeof departmentId !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            departmentId,
+          ))
+      ) {
+        res.status(400).json({
+          error: {
+            message: "Invalid departmentId",
+            status: 400,
+          },
+        });
+        return;
+      }
 
       const members = await MemberService.getAll(
         req.user?.organization_id || null,
@@ -24,8 +40,10 @@ export class MemberController {
         {
           startDate: typeof startDate === "string" ? startDate : undefined,
           endDate: typeof endDate === "string" ? endDate : undefined,
-        }
+        },
+        typeof departmentId === "string" ? departmentId : undefined,
       );
+
       res.json(members);
     } catch (error) {
       next(error);
@@ -115,7 +133,14 @@ export class MemberController {
       const { id } = req.params;
       const { designation } = req.body;
       if (!designation || typeof designation !== "string") {
-        res.status(400).json({ error: { message: "Position / designation is required.", status: 400 } });
+        res
+          .status(400)
+          .json({
+            error: {
+              message: "Position / designation is required.",
+              status: 400,
+            },
+          });
         return;
       }
       const userCtx = req.user
@@ -132,7 +157,9 @@ export class MemberController {
         userCtx,
       );
       if (!member) {
-        res.status(404).json({ error: { message: "Member not found", status: 404 } });
+        res
+          .status(404)
+          .json({ error: { message: "Member not found", status: 404 } });
         return;
       }
       if (req.user) {
@@ -148,7 +175,11 @@ export class MemberController {
     }
   }
 
-  static async updateDepartment(req: Request, res: Response, next: NextFunction) {
+  static async updateDepartment(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
     try {
       const { id } = req.params;
       const { departmentId } = req.body;
@@ -167,7 +198,9 @@ export class MemberController {
         userCtx,
       );
       if (!member) {
-        res.status(404).json({ error: { message: "Member not found", status: 404 } });
+        res
+          .status(404)
+          .json({ error: { message: "Member not found", status: 404 } });
         return;
       }
       if (req.user) {
@@ -256,14 +289,19 @@ export class MemberController {
     }
   }
 
-  static async updateTaskRights(req: Request, res: Response, next: NextFunction) {
+  static async updateTaskRights(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
     try {
       const userRank = req.user?.role_rank ?? 4;
       const isSuperAdmin = req.user?.is_super_admin;
       if (!isSuperAdmin && userRank > 3) {
         res.status(403).json({
           error: {
-            message: "Forbidden: Only Admin, Manager, and Team leader can modify task creation rights.",
+            message:
+              "Forbidden: Only Admin, Manager, and Team leader can modify task creation rights.",
             status: 403,
           },
         });

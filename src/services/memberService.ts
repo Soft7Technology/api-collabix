@@ -27,78 +27,91 @@ export class MemberService {
       startDate?: string;
       endDate?: string;
     },
+    departmentId?: string,
   ) {
     if (!organizationId) {
       return [];
     }
-    const interval = "15 minutes";
-    const tickInterval = 300; // 5 minutes per screenshot capture
 
     const params: any[] = [organizationId];
     let dateCondition = "";
 
-    if (dateRange && dateRange.startDate) {
+    if (dateRange?.startDate) {
       const start = dateRange.startDate;
       const end = dateRange.endDate || start;
+
       params.push(start, end);
-      const startIdx = params.length - 1; // 2
-      const endIdx = params.length; // 3
+
+      const startIdx = params.length - 1;
+      const endIdx = params.length;
+
       dateCondition = `(sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date >= $${startIdx}::date AND (sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date <= $${endIdx}::date`;
     } else {
       dateCondition = `(sl.captured_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date`;
     }
 
     let queryStr = `
-      SELECT u.*, d.name as department_name, sys_role.name as system_role_name, sys_role.rank as system_role_rank,
-        (SELECT status FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_status,
-        (SELECT screenshot_path FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_path,
-        (SELECT captured_at FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_time,
-        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.status = 'active' OR sl.status = 'inactive' OR (sl.status = 'stopped' AND sl.duration_seconds > 0)) AND ${dateCondition}) as today_seconds,
-        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'lunch' AND ${dateCondition}) as today_lunch_seconds,
-        (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'inactive' AND ${dateCondition}) as today_idle_seconds,
-        (SELECT MIN(sl.captured_at) FROM screen_logs sl WHERE sl.user_id = u.id AND ${dateCondition}) as first_clock_in,
-        (SELECT MAX(sl.captured_at) FROM screen_logs sl WHERE sl.user_id = u.id AND ${dateCondition}) as last_clock_out
-      FROM users u
-      LEFT JOIN departments d ON u.department_id = d.id
-      LEFT JOIN roles sys_role ON u.role_id = sys_role.id
-      WHERE u.organization_id = $1
-    `;
+    SELECT u.*, d.name as department_name, sys_role.name as system_role_name, sys_role.rank as system_role_rank,
+      (SELECT status FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_status,
+      (SELECT screenshot_path FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_path,
+      (SELECT captured_at FROM screen_logs sl WHERE sl.user_id = u.id ORDER BY sl.captured_at DESC LIMIT 1) as latest_log_time,
+      (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND (sl.status = 'active' OR sl.status = 'inactive' OR (sl.status = 'stopped' AND sl.duration_seconds > 0)) AND ${dateCondition}) as today_seconds,
+      (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'lunch' AND ${dateCondition}) as today_lunch_seconds,
+      (SELECT COALESCE(SUM(sl.duration_seconds), 0)::int FROM screen_logs sl WHERE sl.user_id = u.id AND sl.status = 'inactive' AND ${dateCondition}) as today_idle_seconds,
+      (SELECT MIN(sl.captured_at) FROM screen_logs sl WHERE sl.user_id = u.id AND ${dateCondition}) as first_clock_in,
+      (SELECT MAX(sl.captured_at) FROM screen_logs sl WHERE sl.user_id = u.id AND ${dateCondition}) as last_clock_out
+    FROM users u
+    LEFT JOIN departments d ON u.department_id = d.id
+    LEFT JOIN roles sys_role ON u.role_id = sys_role.id
+    WHERE u.organization_id = $1
+  `;
 
     const isAdminOrManager =
       !userCtx ||
       userCtx.isSuperAdmin ||
       (userCtx.roleRank !== undefined && userCtx.roleRank <= 2) ||
       (userCtx.roleName &&
-        (userCtx.roleName.toLowerCase() === "admin" ||
-          userCtx.roleName.toLowerCase() === "super admin" ||
-          userCtx.roleName.toLowerCase() === "manager"));
+        ["admin", "super admin", "manager"].includes(
+          userCtx.roleName.toLowerCase(),
+        ));
 
     if (!isAdminOrManager && userCtx?.id) {
       params.push(userCtx.id);
       const userIdx = params.length;
+
       queryStr += ` AND (
-        u.id = $${userIdx}
-        OR u.id IN (
-          SELECT pm2.member_id 
-          FROM project_members pm2 
-          WHERE pm2.project_id IN (
-            SELECT pm1.project_id 
-            FROM project_members pm1 
-            WHERE pm1.member_id = $${userIdx}
-          )
+      u.id = $${userIdx}
+      OR u.id IN (
+        SELECT pm2.member_id
+        FROM project_members pm2
+        WHERE pm2.project_id IN (
+          SELECT pm1.project_id
+          FROM project_members pm1
+          WHERE pm1.member_id = $${userIdx}
         )
-      )`;
+      )
+    )`;
+    }
+
+    // Optional department filter
+    if (departmentId) {
+      params.push(departmentId);
+      queryStr += ` AND u.department_id = $${params.length}`;
     }
 
     const { rows } = await db.query(queryStr, params);
+
     return rows.map((r) => {
       const isRecent =
         r.latest_log_time &&
         Date.now() - new Date(r.latest_log_time).getTime() < 7 * 60 * 1000;
+
       const isOnline = isRecent && r.latest_log_status === "active";
       const isLunch =
         r.latest_log_status === "lunch" && r.latest_log_path === "LUNCH_START";
+
       const status = isOnline ? "Active" : isLunch ? "Break" : "Offline";
+
       return {
         id: r.id,
         name: r.name,
@@ -111,7 +124,7 @@ export class MemberService {
         roleId: r.role_id,
         departmentId: r.department_id,
         department: r.department_name,
-        status: status,
+        status,
         todaySeconds: r.today_seconds || 0,
         todayLunchSeconds: r.today_lunch_seconds || 0,
         todayIdleSeconds: r.today_idle_seconds || 0,

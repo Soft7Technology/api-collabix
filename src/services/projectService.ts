@@ -11,14 +11,17 @@ export interface ProjectInput {
 }
 
 export class ProjectService {
-  static async getAll(userCtx?: {
-    id: string;
-    roleName: string;
-    roleRank: number;
-    departmentId: string | null;
-    organizationId?: string | null;
-    isSuperAdmin?: boolean;
-  }) {
+  static async getAll(
+    userCtx?: {
+      id: string;
+      roleName: string;
+      roleRank: number;
+      departmentId: string | null;
+      organizationId?: string | null;
+      isSuperAdmin?: boolean;
+    },
+    departmentId?: string,
+  ) {
     if (userCtx && !userCtx.organizationId && !userCtx.isSuperAdmin) {
       return [];
     }
@@ -27,11 +30,10 @@ export class ProjectService {
       !userCtx ||
       userCtx.isSuperAdmin ||
       (userCtx.roleRank !== undefined && userCtx.roleRank <= 2) ||
-      (userCtx.roleName && (
-        userCtx.roleName.toLowerCase() === "admin" ||
-        userCtx.roleName.toLowerCase() === "super admin" ||
-        userCtx.roleName.toLowerCase() === "manager"
-      ));
+      (userCtx.roleName &&
+        (userCtx.roleName.toLowerCase() === "admin" ||
+          userCtx.roleName.toLowerCase() === "super admin" ||
+          userCtx.roleName.toLowerCase() === "manager"));
 
     if (isAdminOrManager) {
       // Organization Admin / Superadmin: return all projects for this organization
@@ -40,10 +42,10 @@ export class ProjectService {
         SELECT p.*, COALESCE(array_agg(pm.member_id) FILTER (WHERE pm.member_id IS NOT NULL), '{}') AS "memberIds"
         FROM projects p
         LEFT JOIN project_members pm ON p.id = pm.project_id
-        WHERE p.organization_id = $1
+        WHERE p.organization_id = $1 AND ($2::uuid IS NULL OR p.department_id = $2::uuid)
         GROUP BY p.id;
       `,
-        [userCtx?.organizationId || null],
+        [userCtx?.organizationId || null, departmentId || null],
       );
       return rows.map((r) => ({
         id: r.id,
@@ -65,11 +67,11 @@ export class ProjectService {
       SELECT p.*, COALESCE(array_agg(pm.member_id) FILTER (WHERE pm.member_id IS NOT NULL), '{}') AS "memberIds"
       FROM projects p
       LEFT JOIN project_members pm ON p.id = pm.project_id
-      WHERE p.organization_id = $2
+      WHERE p.organization_id = $2 AND ($3::uuid IS NULL OR p.department_id = $3::uuid)
       GROUP BY p.id
       HAVING ($1 = ANY(COALESCE(array_agg(pm.member_id) FILTER (WHERE pm.member_id IS NOT NULL), '{}')));
     `,
-      [userCtx.id, userCtx.organizationId || null],
+      [userCtx.id, userCtx.organizationId || null, departmentId || null],
     );
     return rows.map((r) => ({
       id: r.id,
@@ -103,7 +105,10 @@ export class ProjectService {
   static async create(project: ProjectInput, organizationId?: string | null) {
     const id = `p${Date.now()}`;
     const client = await pool.connect();
-    const deptId = project.departmentId && project.departmentId !== "none" ? project.departmentId : null;
+    const deptId =
+      project.departmentId && project.departmentId !== "none"
+        ? project.departmentId
+        : null;
     try {
       await client.query("BEGIN");
 
@@ -195,7 +200,10 @@ export class ProjectService {
         values.push(patch.color);
       }
       if (patch.departmentId !== undefined) {
-        const dId = patch.departmentId && patch.departmentId !== "none" ? patch.departmentId : null;
+        const dId =
+          patch.departmentId && patch.departmentId !== "none"
+            ? patch.departmentId
+            : null;
         fieldsToUpdate.push(`department_id = $${index++}`);
         values.push(dId);
       }
